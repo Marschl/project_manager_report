@@ -13,10 +13,10 @@ class rex_command_project_manager_report_preview extends rex_console_command
     {
         $this
             ->setDescription('Shows subject and body of the project manager status mail without sending it')
-            ->addOption('stale-hours', null, InputOption::VALUE_REQUIRED, 'Hours after which the last successful fetch counts as outdated', (string) rex_project_manager_report_collector::DEFAULT_STALE_HOURS)
-            ->addOption('syslog-ignore', null, InputOption::VALUE_REQUIRED, 'Comma separated syslog types that are not a finding', implode(',', rex_project_manager_report_collector::DEFAULT_SYSLOG_IGNORE))
+            ->addOption('stale-hours', null, InputOption::VALUE_REQUIRED, 'Hours after which the last successful fetch counts as outdated (default: addon setting)')
+            ->addOption('syslog-ignore', null, InputOption::VALUE_REQUIRED, 'Comma separated syslog types that are not a finding (default: addon setting)')
             ->addOption('format', null, InputOption::VALUE_REQUIRED, 'machine (compact mail), report-text or report-html', 'machine')
-            ->addOption('ignore-message', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Substring of "type message file:line" that is not a finding (repeatable)')
+            ->addOption('ignore-message', null, InputOption::VALUE_REQUIRED | InputOption::VALUE_IS_ARRAY, 'Substring of "type message file:line" that is not a finding, replaces the addon setting (repeatable)')
         ;
     }
 
@@ -29,10 +29,14 @@ class rex_command_project_manager_report_preview extends rex_console_command
             return 1;
         }
 
+        // nicht angegebene Optionen: Werte aus den Einstellungen des Addons
+        $stale = $input->getOption('stale-hours');
+        $types = $input->getOption('syslog-ignore');
+        $messages = (array) $input->getOption('ignore-message');
         $projects = rex_project_manager_report_collector::collect(
-            max(1, (int) $input->getOption('stale-hours')),
-            rex_project_manager_report_collector::parseList((string) $input->getOption('syslog-ignore')),
-            rex_project_manager_report_collector::parseLines(implode("\n", (array) $input->getOption('ignore-message'))),
+            null === $stale ? null : max(1, (int) $stale),
+            null === $types ? null : rex_project_manager_report_collector::parseList((string) $types),
+            [] === $messages ? null : rex_project_manager_report_collector::parseLines(implode("\n", $messages)),
         );
         $now = new DateTimeImmutable();
 

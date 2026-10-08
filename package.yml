@@ -1,10 +1,38 @@
 package: project_manager_report
-version: '1.2.1'
+version: '1.3.0'
 author: 'Marcel Scherkamp'
+
+page:
+    title: 'translate:project_manager_report_title'
+    perm: project_manager_report[]
+    icon: rex-icon fa-envelope-o
+    subpages:
+        settings:
+            title: 'translate:project_manager_report_settings'
+        projects:
+            title: 'translate:project_manager_report_projects'
 
 # Konsolen-Befehl: Vorschau der Mail ohne Versand
 console_commands:
     project_manager_report:preview: rex_command_project_manager_report_preview
+
+# Startwerte der Einstellungen (leer gespeichert = Regel aus)
+default_config:
+    min_rex: '5.21.2'
+    min_php: '8.3'
+    min_mariadb: '10.11'
+    min_mysql: '8.4'
+    max_patch_lag: '3'
+    ignore_prerelease: '1'
+    recipients: ''
+    recipients_report: ''
+    stale_hours: '30'
+    syslog_ignore: 'Info,logevent,Deprecated,Notice'
+    syslog_ignore_messages: ''
+
+# Prüfskript gehört nicht ins Installer-Paket
+installer_ignore:
+    - tests
 
 requires:
     redaxo: '^5.17'

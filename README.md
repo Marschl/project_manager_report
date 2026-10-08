@@ -10,7 +10,7 @@ Das Addon liest nur die Datenbank: keine Änderung am Abruf, keine zusätzlichen
 ## Einrichtung
 
 1. Addon installieren. Dabei entsteht der Cronjob **Projekt Manager: Status-Mail** (Umgebung `script`, täglich 06:30, **inaktiv**).
-2. Im Cronjob-Addon die Empfänger eintragen (eines oder beide Felder) und den Job aktivieren.
+2. Im Backend unter *Projekt Manager Report → Einstellungen* die Empfänger eintragen (eines oder beide Felder) und im Cronjob-Addon den Job aktivieren.
 3. System-Cron auf `redaxo/bin/console cronjob:run` einrichten (alle 5 Minuten).
 4. Die Abruf-Cronjobs des Project Managers laufen nur in der Umgebung `backend`; damit der Report nach dem Abruf läuft, dort zusätzlich `script` anhaken (Cronjob-Oberfläche, keine Code-Änderung).
 
@@ -24,19 +24,28 @@ ddev exec php redaxo/bin/console project_manager_report:preview --format=report-
 ddev exec php redaxo/bin/console project_manager_report:preview --format=report-html  # Bericht als HTML
 ```
 
-## Parameter des Cronjobs
+## Einstellungen (Backend: Projekt Manager Report → Einstellungen)
 
-| Parameter | Bedeutung | Vorgabe |
+Der Cronjob „Projekt Manager: Status-Mail“ hat **keine eigenen Parameter**; alles steht auf der Einstellungsseite des Addons.
+
+### Versand
+
+| Einstellung | Bedeutung | Startwert |
 | --- | --- | --- |
-| Empfänger maschinenlesbar (kompakt) | E-Mail-Adressen, getrennt durch Komma oder Zeilenumbruch; leer = diese Mail entfällt | leer |
-| Empfänger Bericht (HTML) | wie oben, für den ausführlichen Bericht; leer = diese Mail entfällt | leer |
-| Veraltet nach (Stunden) | älter als dieser Wert: Projekt gilt als VERALTET | 30 |
-| Syslog-Typen ignorieren | zählen nicht als Befund | `Info,logevent,Deprecated,Notice` |
-| Syslog-Meldungen ignorieren | Teiltexte, einer pro Zeile, Schreibweise egal | leer |
+| Empfänger maschinenlesbar (kompakt) (`recipients`) | E-Mail-Adressen, getrennt durch Komma oder Zeilenumbruch; leer = diese Mail entfällt | leer |
+| Empfänger Bericht (HTML) (`recipients_report`) | wie oben, für den ausführlichen Bericht | leer |
 
-Sind beide Empfängerfelder leer, schlägt der Job mit „Keine Empfänger eingetragen“ fehl.
+Sind beide Felder leer, schlägt der Job mit „Keine Empfänger eingetragen“ fehl. Ungültige Adressen lehnt das Formular beim Speichern ab.
 
-Vorgaben gelten nur, solange ein Parameter nie gespeichert wurde. Ein Cronjob, der mit Version 1.0 gespeichert wurde, behält seinen Wert bei „Syslog-Typen ignorieren“ (`Info,logevent`); dort `Deprecated,Notice` ergänzen.
+### Auswertung
+
+| Einstellung | Bedeutung | Startwert |
+| --- | --- | --- |
+| Veraltet nach (Stunden) (`stale_hours`) | älter als dieser Wert: Projekt gilt als VERALTET; leer = 30 | 30 |
+| Syslog-Typen ignorieren (`syslog_ignore`) | zählen nicht als Befund; leer gespeichert = nichts ignorieren | `Info,logevent,Deprecated,Notice` |
+| Syslog-Meldungen ignorieren (`syslog_ignore_messages`) | Teiltexte, einer pro Zeile, Schreibweise egal | leer |
+
+**Update von Version 1.2 oder älter:** Die bisherigen Cronjob-Parameter werden bei der (Neu-)Installation einmalig in diese Einstellungen übernommen (vorhandene Einstellungen werden nicht überschrieben), danach sind die Parameter des Cronjobs leer. Das Addon nach dem Update neu installieren.
 
 ### Syslog filtern
 
@@ -45,44 +54,63 @@ Vorgaben gelten nur, solange ein Parameter nie gespeichert wurde. Ein Cronjob, d
 
 Gefilterte Einträge sind kein Befund und zählen nicht in `xN` und `syslog=N`. Der Bericht zeigt sie getrennt als „Syslog ohne Befund“ (je Typ gezählt). Der Filter blendet Fehler nur im Report aus, er behebt sie nicht.
 
-Vorschau mit Filter: `project_manager_report:preview --ignore-message='Undefined variable \$params'` (mehrfach möglich; in `ddev exec` das `$` mit Backslash schützen).
+Vorschau mit Filter: `project_manager_report:preview --ignore-message='Undefined variable \$params'` (ersetzt die Einstellung, mehrfach möglich; in `ddev exec` das `$` mit Backslash schützen).
 
 ## Befund
 
-**Befund** ist: FEHLER, VERALTET, eine unterschrittene Mindestversion oder mindestens ein nicht ignorierter Syslog-Eintrag der letzten 24 Stunden. **Addon-Updates sind kein Befund**; sie stehen im Inventar der kompakten Mail und im Bericht.
+**Befund** ist: FEHLER, VERALTET, eine unterschrittene Mindestversion (REDAXO, PHP, Datenbank), ein Patch-Rückstand in der PHP-Linie oder mindestens ein nicht ignorierter Syslog-Eintrag der letzten 24 Stunden. **Addon-Updates sind kein Befund**; sie stehen im Inventar der kompakten Mail und im Bericht.
 
-## Mindestversionen
+### Mindestversionen und Rückstand
 
-Das Addon nutzt die Einstellungen des Project Managers (Server-Plugin, *Einstellungen → Mindestanforderungen*), es gibt keine eigenen Werte:
+Die Mindestversionen sind frei einstellbar (Text, kein Dropdown). Format `x.y` oder `x.y.z`, **leer = Regel aus**. Solange ein Wert nie gespeichert wurde, gilt der Startwert.
 
-| Einstellung im Project Manager | Prüfung |
-| --- | --- |
-| PHP Version (`php_min`) | PHP-Version des Projekts |
-| Redaxo 5 Version (`cms_min`) | REDAXO-Version von Projekten mit REDAXO 5 |
-| Redaxo 4 Version (`cms_4_min`) | REDAXO-Version von Projekten mit REDAXO 4 |
-| Addons ausschließen, Versionen ausschließen | gelten auch für `addon_updates` (Addon-Name exakt, Version als Teiltext, z. B. `beta,dev,rc`) |
+| Einstellung | Startwert | Bedeutung |
+| --- | --- | --- |
+| Mindestversion REDAXO (`min_rex`) | 5.21.2 | Core-Version, voller Vergleich; gilt nicht für REDAXO-4-Projekte |
+| Mindestversion PHP (`min_php`) | 8.3 | PHP-Linie, verglichen wird nur `major.minor` |
+| Mindestversion MariaDB (`min_mariadb`) | 10.11 | nur wenn die Engine des Projekts MariaDB ist (`major.minor`) |
+| Mindestversion MySQL (`min_mysql`) | 8.4 | nur wenn die Engine MySQL ist (`major.minor`) |
+| Erlaubter PHP-Patch-Rückstand (`max_patch_lag`) | 3 | max. Abstand zur höchsten Patchversion derselben PHP-Linie unter allen Projekten; leer = aus |
+| Vorabversionen ignorieren (`ignore_prerelease`) | an | alpha/beta/rc/dev als neueste Version zählen nicht als Addon-Update |
 
-Liegt die Version des Projekts darunter (`version_compare`), ist das ein Befund: in der kompakten Mail eine Zeile `Mindestversion: PHP 7.4.33 < 8.1`, im Bericht eine rote Markierung. Ist eine Einstellung leer oder keine Versionsnummer, wird sie nicht geprüft (anders als der Project Manager, der dann auf 5.3 zurückfällt). Projekte mit FEHLER haben keine Daten und werden nicht geprüft; bei VERALTET zählen die letzten bekannten Werte.
+Die Mindestversionen des Project Managers (`php_min`, `cms_min`, `cms_4_min`) werden **nicht mehr gelesen**. „Addons ausschließen“ und „Versionen ausschließen“ des Project Managers gelten weiter für `addon_updates`.
+
+### Overrides je Projekt (Backend: Projekt Manager Report → Projekte)
+
+Pro Domain lassen sich eigene `min_rex`, `min_php`, `min_mariadb`, `min_mysql` eintragen (Tabelle `rex_project_manager_report_override`). Leeres Feld = globaler Wert. `0.0` schaltet die Regel für dieses Projekt ab. Sind alle Felder leer, wird der Override gelöscht. Ein Override gilt nur für die Mindestversionen, nicht für den Patch-Rückstand.
+
+### Regeln
+
+- **PHP:** Zusätze ab dem ersten `-` oder `+` werden entfernt (`8.4.24-nmm1` → `8.4.24`); verglichen wird `major.minor`.
+- **Datenbank:** Engine `MariaDB`, sonst `MySQL`. Das Replikations-Präfix `5.5.5-` von MariaDB fällt weg, folgt danach eine Version (`5.5.5-10.3.39-MariaDB`), gilt diese. Bleibt keine Version (`5.5.5-MariaDB`), ist die DB-Version **unbekannt**: kein Befund, aber `DB-Version unbekannt` in der Mail. Suffixe wie `-0ubuntu0.24.04.1-log` fallen weg.
+- **below_min** (`db`, `php`, `rex`, alphabetisch, kommagetrennt): die Version des Projekts liegt unter dem Minimum. FEHLER-Projekte haben keine Daten und werden nicht geprüft; bei VERALTET zählen die letzten bekannten Werte.
+- **Patch-Rückstand:** Projekte mit Daten (nicht FEHLER) werden nach PHP-Linie gruppiert, das Flottenmaximum je Linie ist die höchste Patchversion der Gruppe. Liegt ein Projekt mehr als `max_patch_lag` Patches dahinter, ist es im Rückstand (`8.4.12<8.4.26`). Linien mit nur einem Projekt haben keinen Rückstand. Das Maximum wird bei jedem Lauf berechnet, es gibt keine externe Quelle.
 
 ## Kompakte Mail
 
 Betreff (parsebar): `[Projekt Manager - Data] YYYY-MM-DD | N Projekte | X mit Befund | Y Fehler`
 
-Der Text besteht aus drei Teilen, getrennt durch eine Leerzeile:
+Die Mail ist für die automatische Auswertung (z. B. durch einen KI-Agenten) gedacht und deshalb **bewusst knapp**: nur Kopf und Inventar, **keine Detail-Blöcke** je Projekt und keine Syslog-Texte. Die Details (Meldungen, Mindestwerte, Rückstand) stehen im Bericht für Menschen.
 
 ```text
-Lauf: 2026-10-08 06:30 | Abgefragt: 14 | OK: 13 | Fehler: 1 | Mit Befund: 3
+Lauf: 2026-10-08 06:30 | Abgefragt: 14 | OK: 13 | Fehler: 1 | Mit Befund: 3 | Ältester Abruf: 2026-10-07 00:00
+SYSLOG_IGNORIERT: 12
 
-== domain.de ==
-Syslog 24h: Warning "Meldung" (datei.php:12) x3
-
-# domain | rex | php | db | addon_updates | syslog | below_min
-domain.de | 5.21.4 | 8.4.24 | 10.11.14-MariaDB | addon_updates=adminer,yform | syslog=3 | below_min=
+# domain | rex | php | db | addon_updates | syslog | below_min | behind | status | last_ok
+a.de | 5.21.4 | 8.4.12 | 10.11.14-MariaDB | addon_updates=adminer,yform | syslog=3 | below_min=php | behind=php:8.4.12<8.4.26 | status=ok | last_ok=2026-10-08 00:00
+b.de | - | - | - | addon_updates=- | syslog=- | below_min=- | behind=- | status=error | last_ok=2026-10-07 00:00
 ```
 
-1. **Kopfzeile**, immer.
-2. **Projekte mit Befund**, nur diese; zuerst FEHLER und VERALTET, dann die übrigen, jeweils alphabetisch. Je Projekt nur die Befundzeilen (`FEHLER: …`, `VERALTET: …`, `Mindestversion: …`, `Syslog 24h: …`), keine Versionen und keine Updates.
-3. **Inventar**, immer: eine Spaltenüberschrift (`# domain | rex | php | db | addon_updates | syslog | below_min`, Kommentarzeile) und eine Zeile pro Projekt: `domain | rex | php | db | addon_updates=N | syslog=N`. `addon_updates` ist die kommagetrennte, alphabetische Liste der Addons mit Update (leer = keine Updates; bis 1.1.0 stand hier die Anzahl), `syslog` die Zahl der Befund-Einträge, `below_min` die unterschrittenen Mindestversionen (`php`, `rex`; leer = alle erfüllt). Ohne verwertbare Daten (FEHLER) steht `-`. Neue Spalten kommen rechts dazu (Überschrift und Zeile gemeinsam).
+1. **Kopf**, immer: die Lauf-Zeile (mit `Ältester Abruf`, der ältesten `logs.createdate` über alle Projekte) und `SYSLOG_IGNORIERT: N` (Summe aller durch Typ- oder Meldungsfilter unterdrückten Einträge der 24 h).
+2. **Inventar**, immer: eine Spaltenüberschrift (Kommentarzeile `# domain | rex | php | db | addon_updates | syslog | below_min | behind | status | last_ok`) und eine Zeile pro Projekt, Felder durch ` | ` getrennt:
+   - `domain | rex | php | db`: Versionen; die `db`-Spalte zeigt `unbekannt`, wenn die DB-Version nicht ermittelbar ist.
+   - `addon_updates=`: kommagetrennte, alphabetische Liste der Addons mit Update (leer = keine).
+   - `syslog=N`: Zahl der Befund-Einträge der letzten 24 Stunden.
+   - `below_min=`: unterschrittene Mindestversionen (`db`, `php`, `rex`; leer = alle erfüllt).
+   - `behind=`: PHP-Rückstand (`php:8.4.12<8.4.26`, leer = nein).
+   - `status=`: `ok`, `stale` (VERALTET, Abruf älter als der Schwellwert) oder `error` (FEHLER).
+   - `last_ok=`: letzter erfolgreicher Abruf (`YYYY-MM-DD HH:MM`, `-` wenn nie).
+   Ohne verwertbare Daten (`status=error`) steht in den Datenspalten `-`. Neue Spalten kommen rechts dazu (Überschrift und Zeile gemeinsam).
 
 Die Mail wird auch ohne Befund verschickt. Bleibt sie aus, ist der Versand defekt.
 
@@ -92,14 +120,14 @@ Die Mail wird auch ohne Befund verschickt. Bleibt sie aus, ist der Versand defek
 
 Betreff: `[Projekt Manager - Report] YYYY-MM-DD | X mit Befund | Y Fehler | Z Addon-Updates` (unterscheidet sich im Präfix von der kompakten Mail `[Projekt Manager - Data]`).
 
-Abschnitte: Zusammenfassung, Handlungsbedarf (Befund-Projekte mit Status, Versionen und Syslog-Gruppen), Addon-Updates (kein Befund), Syslog ohne Befund, Alle Projekte (Tabelle mit Status OK, BEFUND, VERALTET, FEHLER). Das HTML kommt aus dem Fragment `fragments/project_manager_report/report.php` (nur Tabellen und Inline-Styles, alle Werte escaped) und lässt sich über das `project`-Addon überschreiben.
+Abschnitte: Zusammenfassung („unter Mindestversion“ und „im Rückstand“ getrennt), Handlungsbedarf (Befund-Projekte mit Status, Versionen, Mindestversionen, Rückstand und Syslog-Gruppen), Addon-Updates (kein Befund), Syslog ohne Befund, Alle Projekte (Tabelle mit Status OK, BEFUND, VERALTET, FEHLER). In der Tabelle sind unterschrittene Werte mit `!` (HTML: rot) und PHP im Rückstand mit `~` (HTML: orange) markiert, darunter steht die Legende. Das HTML kommt aus dem Fragment `fragments/project_manager_report/report.php` (nur Tabellen und Inline-Styles, alle Werte escaped) und lässt sich über das `project`-Addon überschreiben.
 
 ## Definitionen
 
 - **Abgefragt**: alle Projekte in `rex_project_manager_domain`.
 - **FEHLER**: letzter Abruf nicht erfolgreich (`status` 0 oder -1), kein Log-Eintrag oder Log unlesbar. Der Block nennt den letzten Erfolg (`logs.createdate`).
 - **VERALTET**: Abruf erfolgreich, aber `logs.createdate` älter als der Schwellwert. Zählt als OK, aber als Befund.
-- **Mit Befund**: Zahl der Projekte, die FEHLER, VERALTET, eine unterschrittene Mindestversion oder Syslog-Befunde haben.
+- **Mit Befund**: Zahl der Projekte, die FEHLER, VERALTET, eine unterschrittene Mindestversion, einen Patch-Rückstand oder Syslog-Befunde haben.
 - **Addon-Update**: nur installierte und aktive Addons, nur wenn `version_latest` per `version_compare` größer ist als `version_current`. Vorabversionen (`alpha`, `beta`, `rc`, `dev`) als `version_latest` zählen nicht, solange `version_current` keine Vorabversion ist.
 - **Syslog 24h**: Einträge der 24 Stunden vor dem letzten erfolgreichen Abruf (ohne ignorierte Typen und Meldungen), gruppiert nach Typ, Meldung, Datei und Zeile; `xN` ist die Anzahl. Unlesbare Zeitstempel werden mitgezählt. `syslog=N` im Inventar ist die Summe aller Befund-Einträge.
 
@@ -107,4 +135,5 @@ Abschnitte: Zusammenfassung, Handlungsbedarf (Befund-Projekte mit Status, Versio
 
 - Der Client des Project Managers übergibt als `version_latest` die **erste** Installer-Datei, nicht die höchste Version. Falsche „Updates“ filtert der Versionsvergleich, aber ein vorhandenes Update kann fehlen.
 - Der Project Manager hält nur den **letzten** Abruf je Projekt; Änderungen gegenüber früheren Läufen (Vergleich, Verlauf) sind deshalb nicht Teil des Reports.
+- Das Prüfskript `tests/run.php` (ohne REDAXO, ohne Abhängigkeiten) prüft Normalisierung, Mindestversionen, Rückstand und Mailformat: `php redaxo/src/addons/project_manager_report/tests/run.php`.
 - Im Umleitungsmodus (Detour) des Addons `phpmailer` ändert dieses den Betreff; das feste Betreffformat gilt nur ohne Detour.

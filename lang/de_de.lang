@@ -1,0 +1,57 @@
+project_manager_report_title = Projekt Manager Report
+project_manager_report_settings = Einstellungen
+project_manager_report_projects = Projekte
+
+perm_general_project_manager_report[] = project_manager_report[] - Einstellungen und Projekt-Overrides des Projekt Manager Reports
+
+project_manager_report_settings_title = Einstellungen
+project_manager_report_group_versions = Mindestversionen und Rückstand
+project_manager_report_settings_intro = Gelten für alle Projekte. Leeres Feld = Regel aus. Versionen als x.y oder x.y.z; PHP und Datenbank werden nur auf major.minor verglichen, REDAXO voll.
+project_manager_report_min_rex = Mindestversion REDAXO
+project_manager_report_min_rex_note = Core-Version, z. B. 5.21.2. Gilt nicht für REDAXO-4-Projekte.
+project_manager_report_min_php = Mindestversion PHP
+project_manager_report_min_php_note = PHP-Linie, z. B. 8.3
+project_manager_report_min_mariadb = Mindestversion MariaDB
+project_manager_report_min_mariadb_note = Gilt nur, wenn die Engine des Projekts MariaDB ist, z. B. 10.11
+project_manager_report_min_mysql = Mindestversion MySQL
+project_manager_report_min_mysql_note = Gilt nur, wenn die Engine des Projekts MySQL ist, z. B. 8.4
+project_manager_report_max_patch_lag = Erlaubter PHP-Patch-Rückstand
+project_manager_report_max_patch_lag_note = Max. Abstand der Patchversion zur höchsten Patchversion derselben PHP-Linie unter allen Projekten (Ganzzahl, z. B. 3).
+project_manager_report_ignore_prerelease = Vorabversionen bei Addon-Updates ignorieren
+project_manager_report_ignore_prerelease_note = alpha, beta, rc und dev als neueste Version zählen nicht als Update, solange das Projekt selbst keine Vorabversion einsetzt.
+project_manager_report_save = Speichern
+project_manager_report_saved = Einstellungen gespeichert.
+project_manager_report_invalid_version = „{0}“: ungültige Version (erlaubt: x.y oder x.y.z, oder leer).
+project_manager_report_group_mail = Versand
+project_manager_report_group_mail_intro = Es gibt zwei Mails: eine kompakte, maschinenlesbare und einen ausführlichen Bericht für Menschen. Beide haben eigene Empfänger; ein leeres Feld lässt die jeweilige Mail entfallen. Der Cronjob „Projekt Manager: Status-Mail“ löst den Versand aus.
+project_manager_report_recipients = Empfänger maschinenlesbar (kompakt)
+project_manager_report_recipients_note = Knappe, strukturierte Plain-Text-Mail zur automatischen Auswertung. E-Mail-Adressen, getrennt durch Komma oder Zeilenumbruch.
+project_manager_report_recipients_report = Empfänger Bericht (HTML)
+project_manager_report_recipients_report_note = Ausführlicher, lesbarer Bericht (HTML mit Text-Alternative). E-Mail-Adressen, getrennt durch Komma oder Zeilenumbruch.
+project_manager_report_group_evaluation = Auswertung
+project_manager_report_group_evaluation_intro = Was als Befund gilt. Gefilterte Syslog-Einträge zählen nicht als Befund und erscheinen im Bericht als „Syslog ohne Befund“.
+project_manager_report_stale_hours = Veraltet nach (Stunden)
+project_manager_report_stale_hours_note = Liegt der letzte erfolgreiche Abruf länger zurück, gilt das Projekt als VERALTET (Befund). Ganzzahl ab 1, leer = 30.
+project_manager_report_syslog_ignore = Syslog-Typen ignorieren
+project_manager_report_syslog_ignore_note = Kommagetrennt, Schreibweise egal, z. B. Info,logevent,Deprecated,Notice. Warning zu ignorieren verbirgt auch echte PHP-Fehler.
+project_manager_report_syslog_ignore_messages = Syslog-Meldungen ignorieren
+project_manager_report_syslog_ignore_messages_note = Teiltexte, einer pro Zeile, Schreibweise egal. Geprüft gegen „Typ Meldung Datei:Zeile“, z. B. Undefined variable $params
+project_manager_report_invalid_address = „{0}“: ungültige E-Mail-Adresse: {1}
+project_manager_report_invalid_hours = „{0}“: ungültiger Wert (erlaubt: Ganzzahl ab 1 oder leer).
+project_manager_report_invalid_lag = „{0}“: ungültiger Wert (erlaubt: Ganzzahl oder leer).
+project_manager_report_no_permission = Keine Berechtigung.
+
+project_manager_report_projects_title = Projekte
+project_manager_report_projects_intro = Eigene Mindestversionen je Projekt. Leeres Feld = globaler Wert aus den Einstellungen. Mit 0.0 ist die jeweilige Regel für das Projekt abgeschaltet.
+project_manager_report_domain = Domain
+project_manager_report_cms = CMS
+project_manager_report_global = global
+project_manager_report_edit = Bearbeiten
+project_manager_report_override_for = Override für {0}
+project_manager_report_override_saved = Override gespeichert.
+project_manager_report_override_removed = Override entfernt, es gelten die globalen Werte.
+project_manager_report_unknown_domain = Das Projekt „{0}“ existiert im Project Manager nicht.
+project_manager_report_need_reinstall = Die Tabelle für Overrides fehlt. Das Addon unter „Addons“ neu installieren.
+project_manager_report_cancel = Abbrechen
+project_manager_report_reset = Zurücksetzen
+project_manager_report_no_projects = Im Project Manager sind keine Projekte angelegt.

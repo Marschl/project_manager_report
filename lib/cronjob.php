@@ -9,21 +9,18 @@ class rex_cronjob_project_manager_report extends rex_cronjob
 {
     public function execute()
     {
-        $compactTo = rex_project_manager_report_collector::parseList((string) $this->getParam('recipients', ''));
-        $reportTo = rex_project_manager_report_collector::parseList((string) $this->getParam('recipients_report', ''));
+        // alle Einstellungen (Empfänger, Schwellen, Filter) kommen aus Projekt Manager Report → Einstellungen
+        $settings = rex_project_manager_report_collector::settings();
+        $compactTo = $settings['recipients'];
+        $reportTo = $settings['recipients_report'];
         if ([] === $compactTo && [] === $reportTo) {
-            $this->setMessage('Keine Empfänger eingetragen');
+            $this->setMessage('Keine Empfänger eingetragen (Projekt Manager Report, Einstellungen)');
 
             return false;
         }
 
         try {
-            $ignore = $this->getParam('syslog_ignore');
-            $projects = rex_project_manager_report_collector::collect(
-                max(1, (int) $this->getParam('stale_hours', rex_project_manager_report_collector::DEFAULT_STALE_HOURS)),
-                null === $ignore ? rex_project_manager_report_collector::DEFAULT_SYSLOG_IGNORE : rex_project_manager_report_collector::parseList((string) $ignore),
-                rex_project_manager_report_collector::parseLines((string) $this->getParam('syslog_ignore_messages', '')),
-            );
+            $projects = rex_project_manager_report_collector::collect(null, null, null, $settings);
             $now = new DateTimeImmutable();
         } catch (Throwable $e) {
             $this->logFailure($e);
@@ -123,44 +120,9 @@ class rex_cronjob_project_manager_report extends rex_cronjob
         return ['backend', 'script'];
     }
 
+    /** Keine typspezifischen Parameter: alles steht unter Projekt Manager Report, Einstellungen. */
     public function getParamFields()
     {
-        return [
-            [
-                'label' => 'Empfänger maschinenlesbar (kompakt)',
-                'name' => 'recipients',
-                'type' => 'textarea',
-                'attributes' => ['rows' => 3],
-                'notice' => 'Knappe, strukturierte Plain-Text-Mail zur automatischen Auswertung. E-Mail-Adressen, getrennt durch Komma oder Zeilenumbruch; leer = diese Mail entfällt.',
-            ],
-            [
-                'label' => 'Empfänger Bericht (HTML)',
-                'name' => 'recipients_report',
-                'type' => 'textarea',
-                'attributes' => ['rows' => 3],
-                'notice' => 'Ausführlicher, lesbarer Bericht (HTML mit Text-Alternative). E-Mail-Adressen, getrennt durch Komma oder Zeilenumbruch; leer = diese Mail entfällt.',
-            ],
-            [
-                'label' => 'Veraltet nach (Stunden)',
-                'name' => 'stale_hours',
-                'type' => 'text',
-                'default' => (string) rex_project_manager_report_collector::DEFAULT_STALE_HOURS,
-                'notice' => 'Liegt der letzte erfolgreiche Abruf länger zurück, gilt das Projekt als VERALTET (Befund).',
-            ],
-            [
-                'label' => 'Syslog-Typen ignorieren',
-                'name' => 'syslog_ignore',
-                'type' => 'text',
-                'default' => implode(',', rex_project_manager_report_collector::DEFAULT_SYSLOG_IGNORE),
-                'notice' => 'Diese Typen zählen nicht als Befund (Schreibweise egal). Vorgabe: Info,logevent,Deprecated,Notice',
-            ],
-            [
-                'label' => 'Syslog-Meldungen ignorieren',
-                'name' => 'syslog_ignore_messages',
-                'type' => 'textarea',
-                'attributes' => ['rows' => 3],
-                'notice' => 'Teiltexte, einer pro Zeile, Schreibweise egal. Geprüft gegen „Typ Meldung Datei:Zeile“, z. B. Undefined variable $params',
-            ],
-        ];
+        return [];
     }
 }

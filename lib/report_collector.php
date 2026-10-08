@@ -8,11 +8,17 @@
  *   domain       string
  *   state        'ok' | 'stale' | 'error'
  *   last_success string|null   Zeitpunkt des letzten erfolgreichen Abrufs (logs.createdate)
- *   rex, php     string|null   Versionsnummern
- *   db           string|null   z. B. "10.11.14-MariaDB"
- *   db_label     string|null   z. B. "MariaDB 10.11.14"
  *   cms          string        '4' | '5' (Spalte cms des Project Managers)
- *   violations   list<array{key: 'php'|'rex', actual: string, min: string}>   unterschrittene Mindestversionen
+ *   rex          string|null   REDAXO-Version
+ *   php          string|null   PHP-Version ohne Zusätze, z. B. "8.4.24"
+ *   php_line     string|null   PHP-Linie, z. B. "8.4"
+ *   php_patch    int|null      Patchstufe
+ *   db_engine    'MariaDB'|'MySQL'|null
+ *   db_version   string|null   Version ohne Zusätze, null = unbekannt
+ *   db           string        für das Inventar: "10.11.14-MariaDB", "unbekannt" oder "-" (keine Daten)
+ *   db_label     string        für Text: "MariaDB 10.11.14", "DB unbekannt" oder "-"
+ *   violations   list<array{key: 'db'|'php'|'rex', label: string, min: string}>   unterschrittene Mindestversionen
+ *   behind       array{line: string, actual: string, max: string, lag: int}|null  Patch-Rückstand in der PHP-Linie
  *   updates      list<array{name: string, current: string, latest: string}>
  *   syslog       list<array{type: string, message: string, file: string, line: string, count: int}>   Befund-Einträge der 24 h
  *   ignored      array<string, int>   durch Typ oder Meldungsmuster ignorierte Einträge der 24 h, je Typ (kein Befund)
@@ -21,20 +27,42 @@ class rex_project_manager_report_collector
 {
     public const DEFAULT_STALE_HOURS = 30;
     public const DEFAULT_SYSLOG_IGNORE = ['Info', 'logevent', 'Deprecated', 'Notice'];
+
+    /** Startwerte der Einstellungen (gelten, solange ein Schlüssel nie gespeichert wurde) */
+    public const SETTING_DEFAULTS = [
+        'min_rex' => '5.21.2',
+        'min_php' => '8.3',
+        'min_mariadb' => '10.11',
+        'min_mysql' => '8.4',
+        'max_patch_lag' => '3',
+        'ignore_prerelease' => '1',
+        'recipients' => '',
+        'recipients_report' => '',
+        'stale_hours' => '30',
+        'syslog_ignore' => 'Info,logevent,Deprecated,Notice',
+        'syslog_ignore_messages' => '',
+    ];
+
     private const SYSLOG_WINDOW_SECONDS = 86400;
     private const MESSAGE_MAX_LENGTH = 200;
     private const PRERELEASE = '/alpha|beta|rc|dev/i';
 
     /**
-     * @param list<string> $syslogIgnore Syslog-Typen, die nicht als Befund zählen (ohne Beachtung der Schreibweise)
-     * @param list<string> $ignoreMessages Teiltexte; Einträge, in deren "Typ Meldung Datei:Zeile" einer vorkommt, zählen nicht
-     * @param array<string, mixed>|null $settings Einstellungen des Project Managers (Standard: settings())
+     * Alle Angaben fehlen = Werte aus den Einstellungen des Addons.
+     *
+     * @param int|null $staleHours Stunden bis VERALTET
+     * @param list<string>|null $syslogIgnore Syslog-Typen, die nicht als Befund zählen (ohne Beachtung der Schreibweise)
+     * @param list<string>|null $ignoreMessages Teiltexte; Einträge, in deren "Typ Meldung Datei:Zeile" einer vorkommt, zählen nicht
+     * @param array<string, mixed>|null $settings siehe settings() (Standard: settings())
      * @return list<array<string, mixed>>
      */
-    public static function collect(int $staleHours = self::DEFAULT_STALE_HOURS, array $syslogIgnore = self::DEFAULT_SYSLOG_IGNORE, array $ignoreMessages = [], ?array $settings = null, ?DateTimeImmutable $now = null): array
+    public static function collect(?int $staleHours = null, ?array $syslogIgnore = null, ?array $ignoreMessages = null, ?array $settings = null, ?DateTimeImmutable $now = null): array
     {
         $now ??= new DateTimeImmutable();
         $settings ??= self::settings();
+        $staleHours ??= $settings['stale_hours'] ?? self::DEFAULT_STALE_HOURS;
+        $syslogIgnore ??= $settings['syslog_ignore'] ?? self::DEFAULT_SYSLOG_IGNORE;
+        $ignoreMessages ??= $settings['ignore_messages'] ?? [];
 
         // je Projekt der neueste Log-Eintrag (der Abruf-Cronjob hält nur einen, die Server-API kann mehrere anlegen)
         $rows = rex_sql::factory()->getArray(
@@ -50,28 +78,65 @@ class rex_project_manager_report_collector
             $projects[] = self::analyse($row, $now, $staleHours, $syslogIgnore, $ignoreMessages, $settings);
         }
 
-        return $projects;
+        return self::applyPatchLag($projects, $settings['max_patch_lag'] ?? null);
     }
 
     /**
-     * Mindestanforderungen und Ausschlüsse aus den Einstellungen des Project Managers (Plugin server).
-     * Leer oder ungültig = null bzw. leere Liste = keine Prüfung.
+     * Einstellungen des Addons (Seite "Einstellungen"), Overrides je Projekt und die Ausschlüsse des Project Managers.
+     * Nie gespeichert = Startwert; leer gespeichert oder ungültig = Regel aus (null).
      *
-     * @return array{php_min: ?string, cms_min: ?string, cms_4_min: ?string, skip_addon: list<string>, skip_addon_version: list<string>}
+     * @return array{min_rex: ?string, min_php: ?string, min_mariadb: ?string, min_mysql: ?string, max_patch_lag: ?int, ignore_prerelease: bool, recipients: list<string>, recipients_report: list<string>, stale_hours: int, syslog_ignore: list<string>, ignore_messages: list<string>, skip_addon: list<string>, skip_addon_version: list<string>, overrides: array<string, array<string, ?string>>}
      */
     public static function settings(): array
     {
-        $get = static fn (string $key): string => trim((string) rex_config::get('project_manager/server', $key, ''));
-        $version = static fn (string $value): ?string => 1 === preg_match('/^\d+(?:\.\d+)*$/', $value) ? $value : null;
+        $addon = rex_addon::get('project_manager_report');
+        $get = static fn (string $key): string => $addon->hasConfig($key) ? trim((string) $addon->getConfig($key)) : self::SETTING_DEFAULTS[$key];
+
+        $lag = $get('max_patch_lag');
+        $pm = static fn (string $key): string => trim((string) rex_config::get('project_manager/server', $key, ''));
         $csv = static fn (string $value): array => array_values(array_filter(array_map('trim', explode(',', $value)), static fn (string $item) => '' !== $item));
 
         return [
-            'php_min' => $version($get('php_min')),
-            'cms_min' => $version($get('cms_min')),
-            'cms_4_min' => $version($get('cms_4_min')),
-            'skip_addon' => $csv($get('skip_addon')),
-            'skip_addon_version' => $csv($get('skip_addon_version')),
+            'min_rex' => rex_project_manager_report_version::setting($get('min_rex')),
+            'min_php' => rex_project_manager_report_version::setting($get('min_php')),
+            'min_mariadb' => rex_project_manager_report_version::setting($get('min_mariadb')),
+            'min_mysql' => rex_project_manager_report_version::setting($get('min_mysql')),
+            'max_patch_lag' => 1 === preg_match('/^\d+$/', $lag) ? (int) $lag : null,
+            'ignore_prerelease' => '' !== $get('ignore_prerelease') && '0' !== $get('ignore_prerelease'),
+            'recipients' => self::parseList($get('recipients')),
+            'recipients_report' => self::parseList($get('recipients_report')),
+            'stale_hours' => 1 === preg_match('/^\d+$/', $get('stale_hours')) && (int) $get('stale_hours') >= 1 ? (int) $get('stale_hours') : self::DEFAULT_STALE_HOURS,
+            'syslog_ignore' => self::parseList($get('syslog_ignore')),
+            'ignore_messages' => self::parseLines($get('syslog_ignore_messages')),
+            'skip_addon' => $csv($pm('skip_addon')),
+            'skip_addon_version' => $csv($pm('skip_addon_version')),
+            'overrides' => self::overrides(),
         ];
+    }
+
+    /**
+     * Overrides je Domain (leer/ungültig = null = globaler Wert).
+     *
+     * @return array<string, array<string, ?string>>
+     */
+    public static function overrides(): array
+    {
+        $table = rex::getTable('project_manager_report_override');
+        if (!rex_sql_table::get($table)->exists()) {
+            return [];
+        }
+
+        $overrides = [];
+        foreach (rex_sql::factory()->getArray('SELECT domain, min_rex, min_php, min_mariadb, min_mysql FROM ' . $table) as $row) {
+            $overrides[(string) $row['domain']] = [
+                'min_rex' => rex_project_manager_report_version::setting($row['min_rex']),
+                'min_php' => rex_project_manager_report_version::setting($row['min_php']),
+                'min_mariadb' => rex_project_manager_report_version::setting($row['min_mariadb']),
+                'min_mysql' => rex_project_manager_report_version::setting($row['min_mysql']),
+            ];
+        }
+
+        return $overrides;
     }
 
     /**
@@ -82,6 +147,17 @@ class rex_project_manager_report_collector
     public static function parseList(string $value): array
     {
         return array_values(array_filter(preg_split('/[\s,;]+/', $value) ?: [], static fn (string $item) => '' !== $item));
+    }
+
+    /**
+     * E-Mail-Adressen, die keine gültige Adresse sind.
+     *
+     * @param list<string> $addresses
+     * @return list<string>
+     */
+    public static function invalidAddresses(array $addresses): array
+    {
+        return array_values(array_filter($addresses, static fn (string $address) => false === filter_var($address, FILTER_VALIDATE_EMAIL)));
     }
 
     /**
@@ -106,13 +182,19 @@ class rex_project_manager_report_collector
         $project = [
             'domain' => (string) $row['domain'],
             'state' => 'error',
-            'last_success' => $row['createdate'] ?: null,
+            // "0000-00-00 00:00:00" (Spaltenvorgabe des Project Managers) ist kein Zeitpunkt
+            'last_success' => $row['createdate'] && !str_starts_with((string) $row['createdate'], '0000') ? $row['createdate'] : null,
+            'cms' => (string) ($row['cms'] ?? ''),
             'rex' => null,
             'php' => null,
-            'db' => null,
-            'db_label' => null,
-            'cms' => (string) ($row['cms'] ?? ''),
+            'php_line' => null,
+            'php_patch' => null,
+            'db_engine' => null,
+            'db_version' => null,
+            'db' => '-',
+            'db_label' => '-',
             'violations' => [],
+            'behind' => null,
             'updates' => [],
             'syslog' => [],
             'ignored' => [],
@@ -128,57 +210,99 @@ class rex_project_manager_report_collector
         $logTime = new DateTimeImmutable($project['last_success']);
         $project['state'] = $logTime < $now->modify('-' . $staleHours . ' hours') ? 'stale' : 'ok';
 
-        $project['rex'] = self::version($data['rex_version'] ?? $data['cms_version'] ?? null);
-        $project['php'] = self::version($data['php_version'] ?? null);
-        [$project['db'], $project['db_label']] = self::database((string) ($data['mysql_version'] ?? ''));
+        $project['rex'] = rex_project_manager_report_version::rex($data['rex_version'] ?? $data['cms_version'] ?? null);
+        $php = rex_project_manager_report_version::php($data['php_version'] ?? null);
+        $project['php'] = $php['full'] ?? null;
+        $project['php_line'] = $php['line'] ?? null;
+        $project['php_patch'] = $php['patch'] ?? null;
+
+        $db = rex_project_manager_report_version::database($data['mysql_version'] ?? null);
+        $project['db_engine'] = $db['engine'];
+        $project['db_version'] = $db['version'];
+        $project['db'] = null === $db['version'] ? 'unbekannt' : $db['version'] . '-' . $db['engine'];
+        $project['db_label'] = null === $db['version'] ? 'DB unbekannt' : $db['engine'] . ' ' . $db['version'];
+
         $project['violations'] = self::violations($project, $settings);
-        $project['updates'] = self::updates($data['rex_addons'] ?? [], $settings['skip_addon'] ?? [], $settings['skip_addon_version'] ?? []);
+        $project['updates'] = self::updates(
+            $data['rex_addons'] ?? [],
+            $settings['skip_addon'] ?? [],
+            $settings['skip_addon_version'] ?? [],
+            (bool) ($settings['ignore_prerelease'] ?? true),
+        );
         ['groups' => $project['syslog'], 'ignored' => $project['ignored']] = self::syslog($data['syslog'] ?? [], $logTime, $syslogIgnore, $ignoreMessages);
 
         return $project;
     }
 
-    /** Führende Versionsnummer ohne Zusätze der Distribution ("8.4.24-nmm1" -> "8.4.24"). */
-    private static function version(mixed $value): ?string
-    {
-        return is_string($value) && 1 === preg_match('/^\d+(?:\.\d+)*/', $value, $m) ? $m[0] : null;
-    }
-
     /**
-     * "10.11.14-MariaDB-0ubuntu0.24.04.1-log" -> ["10.11.14-MariaDB", "MariaDB 10.11.14"],
-     * "8.0.35-0ubuntu0.22.04.1" -> ["8.0.35-MySQL", "MySQL 8.0.35"].
+     * Patch-Rückstand: je PHP-Linie wird das Flottenmaximum der Patchstufe aus allen Projekten mit Daten
+     * (nicht FEHLER) bestimmt. Liegt ein Projekt mehr als $maxLag Patches dahinter, ist es im Rückstand.
+     * Linien mit nur einem Projekt haben keinen Rückstand; null = Regel aus.
      *
-     * @return array{0: ?string, 1: ?string}
+     * @param list<array<string, mixed>> $projects
+     * @return list<array<string, mixed>>
      */
-    private static function database(string $value): array
+    public static function applyPatchLag(array $projects, ?int $maxLag): array
     {
-        $version = self::version($value);
-        if (null === $version) {
-            return [null, null];
+        if (null === $maxLag) {
+            return $projects;
         }
-        $product = false !== stripos($value, 'mariadb') ? 'MariaDB' : 'MySQL';
 
-        return [$version . '-' . $product, $product . ' ' . $version];
+        $count = [];
+        $max = [];
+        foreach ($projects as $project) {
+            if ('error' === $project['state'] || null === $project['php_line']) {
+                continue;
+            }
+            $line = $project['php_line'];
+            $count[$line] = ($count[$line] ?? 0) + 1;
+            $max[$line] = max($max[$line] ?? 0, $project['php_patch']);
+        }
+
+        foreach ($projects as &$project) {
+            if ('error' === $project['state'] || null === $project['php_line'] || $count[$project['php_line']] < 2) {
+                continue;
+            }
+            $line = $project['php_line'];
+            $lag = $max[$line] - $project['php_patch'];
+            if ($lag > $maxLag) {
+                $project['behind'] = ['line' => $line, 'actual' => $project['php'], 'max' => $line . '.' . $max[$line], 'lag' => $lag];
+            }
+        }
+        unset($project);
+
+        return $projects;
     }
 
     /**
-     * Unterschrittene Mindestversionen (PHP, REDAXO). REDAXO 4 gegen cms_4_min, sonst gegen cms_min.
+     * Unterschrittene Mindestversionen: PHP und Datenbank nur auf major.minor, REDAXO voll.
+     * Minimum je Projekt aus dem Override, sonst global; die Datenbank-Engine wählt min_mariadb oder min_mysql.
+     * REDAXO-4-Projekte prüfen min_rex nicht. Unbekannte Datenbankversion ist kein Befund.
      *
      * @param array<string, mixed> $project
      * @param array<string, mixed> $settings
-     * @return list<array{key: string, actual: string, min: string}>
+     * @return list<array{key: string, label: string, min: string}>
      */
     private static function violations(array $project, array $settings): array
     {
+        $override = $settings['overrides'][$project['domain']] ?? [];
+        $min = static fn (string $key): ?string => $override[$key] ?? $settings[$key] ?? null;
+        $version = 'rex_project_manager_report_version';
         $violations = [];
-        $checks = [
-            ['php', $project['php'], $settings['php_min'] ?? null],
-            ['rex', $project['rex'], '4' === $project['cms'] ? ($settings['cms_4_min'] ?? null) : ($settings['cms_min'] ?? null)],
-        ];
-        foreach ($checks as [$key, $actual, $min]) {
-            if (is_string($actual) && is_string($min) && version_compare($actual, $min, '<')) {
-                $violations[] = ['key' => $key, 'actual' => $actual, 'min' => $min];
-            }
+
+        $phpMin = $min('min_php');
+        if (null !== $phpMin && null !== $project['php'] && $version::lineBelow($project['php'], $phpMin)) {
+            $violations[] = ['key' => 'php', 'label' => 'PHP ' . $project['php'], 'min' => $phpMin];
+        }
+
+        $rexMin = $min('min_rex');
+        if ('4' !== $project['cms'] && null !== $rexMin && null !== $project['rex'] && $version::below($project['rex'], $rexMin)) {
+            $violations[] = ['key' => 'rex', 'label' => 'REDAXO ' . $project['rex'], 'min' => $rexMin];
+        }
+
+        $dbMin = $min('MariaDB' === $project['db_engine'] ? 'min_mariadb' : 'min_mysql');
+        if (null !== $dbMin && null !== $project['db_version'] && $version::lineBelow($project['db_version'], $dbMin)) {
+            $violations[] = ['key' => 'db', 'label' => $project['db_engine'] . ' ' . $project['db_version'], 'min' => $dbMin];
         }
 
         return $violations;
@@ -190,9 +314,10 @@ class rex_project_manager_report_collector
      *
      * @param list<string> $skipAddons Addons, die der Project Manager von der Prüfung ausnimmt (exakter Name)
      * @param list<string> $skipVersions Teiltexte; enthält "version_latest" einen davon, zählt es nicht als Update
+     * @param bool $ignorePrerelease alpha/beta/rc/dev als "version_latest" nicht melden, solange das Projekt keine Vorabversion einsetzt
      * @return list<array{name: string, current: string, latest: string}>
      */
-    private static function updates(mixed $addons, array $skipAddons = [], array $skipVersions = []): array
+    private static function updates(mixed $addons, array $skipAddons = [], array $skipVersions = [], bool $ignorePrerelease = true): array
     {
         if (!is_array($addons)) {
             return [];
@@ -214,8 +339,7 @@ class rex_project_manager_report_collector
             if (self::matchesAny($latest, $skipVersions)) {
                 continue;
             }
-            // Vorabversionen (alpha, beta, rc, dev) nur melden, wenn das Projekt selbst eine einsetzt
-            if (1 === preg_match(self::PRERELEASE, $latest) && 1 !== preg_match(self::PRERELEASE, $current)) {
+            if ($ignorePrerelease && 1 === preg_match(self::PRERELEASE, $latest) && 1 !== preg_match(self::PRERELEASE, $current)) {
                 continue;
             }
             $updates[] = ['name' => (string) ($addon['name'] ?? $key), 'current' => $current, 'latest' => $latest];

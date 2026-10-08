@@ -1,5 +1,21 @@
 # Changelog
 
+## Version 1.3.0 // 08.10.2026
+
+* **Eigene Einstellungen** (Backend: Projekt Manager Report → Einstellungen): Mindestversionen für REDAXO, PHP, MariaDB und MySQL als freie Texteingabe (`x.y` oder `x.y.z`, leer = Regel aus), erlaubter PHP-Patch-Rückstand, Vorabversionen bei Addon-Updates ignorieren. Die Mindestwerte des Project Managers (`php_min`, `cms_min`, `cms_4_min`) werden nicht mehr gelesen
+* **Overrides je Projekt** (Backend: Projekte, neue Tabelle `rex_project_manager_report_override`): eigene Mindestversionen pro Domain, leer = global, `0.0` = Regel aus. Das Addon nach dem Update neu installieren, damit die Tabelle entsteht
+* **Datenbank nach Engine** (MariaDB oder MySQL) mit je eigener Mindestversion; MariaDB-Präfix `5.5.5-` und Suffixe werden bereinigt; unbekannte DB-Version ist kein Befund (`DB-Version unbekannt`)
+* **Patch-Rückstand:** Abstand der PHP-Patchversion zum Maximum derselben PHP-Linie unter allen Projekten (zur Laufzeit berechnet), ab mehr als `max_patch_lag` ein Befund
+* REDAXO-4-Projekte prüfen `min_rex` nicht
+* Die Nullzeit `0000-00-00 00:00:00` (Spaltenvorgabe des Project Managers) gilt nicht als Abrufzeitpunkt
+* **Data-Mail ohne Detail-Blöcke** (Tokenkosten): nur noch Kopf (mit `Ältester Abruf` und Zeile `SYSLOG_IGNORIERT: N`) und Inventar; die Blöcke `== domain ==` mit Befundzeilen entfallen vollständig, Details stehen im Bericht. Das Inventar hat 10 Felder: neu `behind`, `status` (`ok`, `stale`, `error`) und `last_ok` (letzter erfolgreicher Abruf); `below_min` kennt zusätzlich `db`, die db-Spalte zeigt `unbekannt`. Eine Auswertung muss 10 statt 6 Felder lesen und keine Blöcke mehr erwarten
+* **Bericht:** „unter Mindestversion“ und „im Rückstand“ getrennt in der Zusammenfassung, Markierung `!` und `~` mit Legende (HTML rot und orange)
+* Prüfskript `tests/run.php` (ohne REDAXO und ohne Abhängigkeiten, 76 Prüfungen inklusive Akzeptanz-Fixture)
+* **Alle Einstellungen im Addon:** Empfänger (kompakt und Bericht), „Veraltet nach (Stunden)“, Syslog-Typen und Syslog-Meldungen ignorieren stehen jetzt unter *Projekt Manager Report → Einstellungen* (Gruppen Versand, Auswertung, Mindestversionen und Rückstand). Der Cronjob „Projekt Manager: Status-Mail“ hat keine typspezifischen Parameter mehr
+* **Übernahme:** `install.php` kopiert die bisherigen Cronjob-Parameter einmalig in die Einstellungen (vorhandene Einstellungen bleiben unberührt) und leert danach die Parameter der Cronjob-Zeile. Das Addon nach dem Update neu installieren
+* Beim Speichern werden E-Mail-Adressen und die Stundenzahl geprüft
+* Konsolenbefehl `project_manager_report:preview`: `--stale-hours`, `--syslog-ignore` und `--ignore-message` sind optional und ersetzen sonst die Einstellungen
+
 ## Version 1.2.1 // 08.10.2026
 
 * Betreffpräfixe geändert: kompakte Mail `[Projekt Manager - Data] …` (vorher `[ProjectManager] …`), Bericht `[Projekt Manager - Report] …` (vorher `[ProjectManager Bericht] …`). Rest des Betreffs unverändert; Filter und Auswertungen, die auf das alte Präfix prüfen, anpassen

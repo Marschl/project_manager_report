@@ -3,11 +3,12 @@
 /**
  * Baut aus den Projekt-Datensätzen des Collectors zwei Mails:
  *
- *  - buildMachine(): knapp, streng strukturiert, Plain Text (für Auswertung durch ein Programm oder einen KI-Agenten)
+ *  - buildMachine(): knapp, streng strukturiert, Plain Text (für Auswertung durch ein Programm oder einen KI-Agenten):
+ *    nur Kopf und Inventar, keine Detail-Blöcke (Tokenkosten); Details stehen im Bericht
  *  - buildReport():  ausführlich, lesbar, HTML mit Text-Alternative (für Menschen)
  *
- * Befund = FEHLER, VERALTET, unterschrittene Mindestversion (PHP/REDAXO, Einstellungen des Project Managers)
- * oder mindestens ein nicht ignorierter Syslog-Eintrag.
+ * Befund = FEHLER, VERALTET, unterschrittene Mindestversion (REDAXO, PHP, Datenbank), Patch-Rückstand
+ * in der PHP-Linie oder mindestens ein nicht ignorierter Syslog-Eintrag.
  * Addon-Updates sind kein Befund; sie stehen im Inventar bzw. im Bericht.
  *
  * Reine Aufbereitung: kein SQL, kein Versand.
@@ -15,13 +16,13 @@
 class rex_project_manager_report_builder
 {
     /** Spaltenüberschrift des Inventars; neue Spalten werden rechts angefügt (hier und in inventory()) */
-    public const INVENTORY_HEADER = '# domain | rex | php | db | addon_updates | syslog | below_min';
+    public const INVENTORY_HEADER = '# domain | rex | php | db | addon_updates | syslog | below_min | behind | status | last_ok';
 
     /**
      * Zahlen für Betreff und Kopfzeile beider Mails.
      *
      * @param list<array<string, mixed>> $projects
-     * @return array{projects: int, ok: int, errors: int, stale: int, findings: int, below_min: int, update_projects: int, updates: int}
+     * @return array{projects: int, ok: int, errors: int, stale: int, findings: int, below_min: int, behind: int, update_projects: int, updates: int}
      */
     public static function summary(array $projects): array
     {
@@ -29,6 +30,7 @@ class rex_project_manager_report_builder
         $stale = 0;
         $findings = 0;
         $belowMin = 0;
+        $behind = 0;
         $updateProjects = 0;
         $updates = 0;
 
@@ -45,6 +47,9 @@ class rex_project_manager_report_builder
             if ([] !== $project['violations']) {
                 ++$belowMin;
             }
+            if (null !== $project['behind']) {
+                ++$behind;
+            }
             if ([] !== $project['updates']) {
                 ++$updateProjects;
                 $updates += count($project['updates']);
@@ -58,6 +63,7 @@ class rex_project_manager_report_builder
             'stale' => $stale,
             'findings' => $findings,
             'below_min' => $belowMin,
+            'behind' => $behind,
             'update_projects' => $updateProjects,
             'updates' => $updates,
         ];
@@ -66,7 +72,7 @@ class rex_project_manager_report_builder
     /** @param array<string, mixed> $project */
     public static function hasFinding(array $project): bool
     {
-        return 'ok' !== $project['state'] || [] !== $project['violations'] || [] !== $project['syslog'];
+        return 'ok' !== $project['state'] || [] !== $project['violations'] || null !== $project['behind'] || [] !== $project['syslog'];
     }
 
     /**
@@ -79,29 +85,19 @@ class rex_project_manager_report_builder
     {
         $projects = self::sorted($projects);
         $summary = self::summary($projects);
-        $blocks = ['priority' => [], 'normal' => []];
-
-        foreach ($projects as $project) {
-            $lines = self::findingLines($project);
-            if ([] !== $lines) {
-                $blocks['ok' === $project['state'] ? 'normal' : 'priority'][] = implode("\n", array_merge(['== ' . $project['domain'] . ' =='], $lines));
-            }
-        }
 
         $parts = [
             sprintf(
-                'Lauf: %s | Abgefragt: %d | OK: %d | Fehler: %d | Mit Befund: %d',
+                "Lauf: %s | Abgefragt: %d | OK: %d | Fehler: %d | Mit Befund: %d | Ältester Abruf: %s\nSYSLOG_IGNORIERT: %d",
                 $now->format('Y-m-d H:i'),
                 $summary['projects'],
                 $summary['ok'],
                 $summary['errors'],
                 $summary['findings'],
+                self::oldestFetch($projects),
+                array_sum(array_map(static fn (array $p) => array_sum($p['ignored']), $projects)),
             ),
         ];
-        // Projekte mit FEHLER oder VERALTET zuerst, jeweils alphabetisch (die Eingabe ist bereits sortiert)
-        foreach (array_merge($blocks['priority'], $blocks['normal']) as $block) {
-            $parts[] = $block;
-        }
         if ([] !== $projects) {
             $parts[] = implode("\n", array_merge([self::INVENTORY_HEADER], array_map(self::inventory(...), $projects)));
         }
@@ -164,39 +160,48 @@ class rex_project_manager_report_builder
     }
 
     /**
-     * Zeilen des Projektblocks in der knappen Mail (Teil 2): nur Befunde, keine Versionen, keine Updates.
+     * Unterschrittene Mindestversionen in fester Reihenfolge: PHP, REDAXO, Datenbank.
      *
      * @param array<string, mixed> $project
-     * @return list<string>
+     * @return list<array{key: string, label: string, min: string}>
      */
-    private static function findingLines(array $project): array
+    public static function violations(array $project): array
     {
-        if ('error' === $project['state']) {
-            return [self::errorLine($project)];
-        }
+        $order = ['php' => 0, 'rex' => 1, 'db' => 2];
+        $violations = $project['violations'];
+        usort($violations, static fn (array $a, array $b) => $order[$a['key']] <=> $order[$b['key']]);
 
-        $lines = [];
-        if ('stale' === $project['state']) {
-            $lines[] = self::staleLine($project);
-        }
-        foreach ($project['violations'] as $violation) {
-            $lines[] = 'Mindestversion: ' . self::violationLabel($violation) . ' < ' . $violation['min'];
-        }
-        foreach ($project['syslog'] as $group) {
-            $lines[] = 'Syslog 24h: ' . self::syslogGroup($group);
-        }
-
-        return $lines;
+        return $violations;
     }
 
-    /** @param array{key: string, actual: string} $violation */
+    /** @param array{label: string} $violation */
     public static function violationLabel(array $violation): string
     {
-        return ('php' === $violation['key'] ? 'PHP ' : 'REDAXO ') . $violation['actual'];
+        return $violation['label'];
+    }
+
+    /** "PHP 8.4.12 < 8.4.26 (14 Patches)" @param array<string, mixed> $project */
+    public static function behindLine(array $project): string
+    {
+        $b = $project['behind'];
+
+        return sprintf('PHP %s < %s (%d Patches)', $b['actual'], $b['max'], $b['lag']);
     }
 
     /**
-     * Schlüssel der unterschrittenen Mindestversionen (php, rex).
+     * Älteste Abrufzeit über alle Projekte mit Log ("-" wenn keines).
+     *
+     * @param list<array<string, mixed>> $projects
+     */
+    private static function oldestFetch(array $projects): string
+    {
+        $times = array_filter(array_column($projects, 'last_success'));
+
+        return [] === $times ? '-' : self::minute(min($times));
+    }
+
+    /**
+     * Schlüssel der unterschrittenen Mindestversionen (alphabetisch: db, php, rex).
      *
      * @param array<string, mixed> $project
      * @return list<string>
@@ -237,14 +242,15 @@ class rex_project_manager_report_builder
 
     /**
      * Inventarzeile (Teil 3): feste Spalten, "-" wenn keine Daten vorliegen.
-     * addon_updates nennt die Addons mit Update (kommagetrennt, leer = keine), below_min die unterschrittenen Mindestversionen (php, rex).
+     * addon_updates nennt die Addons mit Update (kommagetrennt, leer = keine), below_min die unterschrittenen Mindestversionen (db, php, rex), behind den PHP-Rückstand (php:ist<max),
+     * status ok|stale|error, last_ok den letzten erfolgreichen Abruf.
      *
      * @param array<string, mixed> $project
      */
     private static function inventory(array $project): string
     {
         if ('error' === $project['state']) {
-            return $project['domain'] . ' | - | - | - | addon_updates=- | syslog=- | below_min=-';
+            return $project['domain'] . ' | - | - | - | addon_updates=- | syslog=- | below_min=- | behind=- | status=error | last_ok=' . self::lastOk($project);
         }
 
         // Namen der Addons mit Update, kommagetrennt (leer = keine); Trennzeichen des Zeilenformats aus Namen entfernen
@@ -254,15 +260,24 @@ class rex_project_manager_report_builder
         ));
 
         return sprintf(
-            '%s | %s | %s | %s | addon_updates=%s | syslog=%d | below_min=%s',
+            '%s | %s | %s | %s | addon_updates=%s | syslog=%d | below_min=%s | behind=%s | status=%s | last_ok=%s',
             $project['domain'],
             $project['rex'] ?? '-',
             $project['php'] ?? '-',
-            $project['db'] ?? '-',
+            $project['db'],
             $updates,
             array_sum(array_column($project['syslog'], 'count')),
             implode(',', self::belowMin($project)),
+            null === $project['behind'] ? '' : sprintf('php:%s<%s', $project['behind']['actual'], $project['behind']['max']),
+            $project['state'],
+            self::lastOk($project),
         );
+    }
+
+    /** @param array<string, mixed> $project */
+    private static function lastOk(array $project): string
+    {
+        return $project['last_success'] ? self::minute($project['last_success']) : '-';
     }
 
     /**
@@ -275,7 +290,7 @@ class rex_project_manager_report_builder
         return match (true) {
             'error' === $project['state'] => 'FEHLER',
             'stale' === $project['state'] => 'VERALTET',
-            [] !== $project['violations'] || [] !== $project['syslog'] => 'BEFUND',
+            [] !== $project['violations'] || null !== $project['behind'] || [] !== $project['syslog'] => 'BEFUND',
             default => 'OK',
         };
     }
@@ -291,13 +306,14 @@ class rex_project_manager_report_builder
         $out[] = '';
         $out[] = 'ZUSAMMENFASSUNG';
         $out[] = sprintf(
-            '%d Projekte abgefragt: %d OK, %d Fehler, %d mit Befund (davon %d veraltet, %d unter Mindestversion). %d Addon-Updates in %d Projekten (kein Befund).',
+            '%d Projekte abgefragt: %d OK, %d Fehler, %d mit Befund. Veraltet: %d, unter Mindestversion: %d, im Rückstand: %d. %d Addon-Updates in %d Projekten (kein Befund).',
             $s['projects'],
             $s['ok'],
             $s['errors'],
             $s['findings'],
             $s['stale'],
             $s['below_min'],
+            $s['behind'],
             $s['updates'],
             $s['update_projects'],
         );
@@ -319,8 +335,11 @@ class rex_project_manager_report_builder
                 $out[] = '  ' . self::staleLine($project);
             }
             $out[] = '  ' . self::versions($project);
-            foreach ($project['violations'] as $violation) {
-                $out[] = '  Mindestversion: ' . self::violationLabel($violation) . ' liegt unter ' . $violation['min'];
+            foreach (self::violations($project) as $violation) {
+                $out[] = '  Mindestversion: ' . $violation['label'] . ' liegt unter ' . $violation['min'];
+            }
+            if (null !== $project['behind']) {
+                $out[] = '  Rückstand: ' . self::behindLine($project) . ', Flottenmaximum der PHP-Linie ' . $project['behind']['line'];
             }
             foreach ($project['syslog'] as $group) {
                 $out[] = '  Syslog 24h: ' . self::syslogGroup($group);
@@ -360,8 +379,8 @@ class rex_project_manager_report_builder
             $rows[] = [
                 $project['domain'],
                 ($project['rex'] ?? '-') . (in_array('rex', $below, true) ? '!' : ''),
-                ($project['php'] ?? '-') . (in_array('php', $below, true) ? '!' : ''),
-                $project['db_label'] ?? '-',
+                ($project['php'] ?? '-') . (in_array('php', $below, true) ? '!' : '') . (null !== $project['behind'] ? '~' : ''),
+                $project['db_label'] . (in_array('db', $below, true) ? '!' : ''),
                 'error' === $project['state'] ? '-' : (string) count($project['updates']),
                 'error' === $project['state'] ? '-' : (string) array_sum(array_column($project['syslog'], 'count')),
                 $project['last_success'] ? self::minute($project['last_success']) : '-',
@@ -369,8 +388,8 @@ class rex_project_manager_report_builder
             ];
         }
         $out[] = self::table($rows);
-        if ($s['below_min'] > 0) {
-            $out[] = '! = unter Mindestversion';
+        if ($s['below_min'] > 0 || $s['behind'] > 0) {
+            $out[] = '! = unter Mindestversion, ~ = Patch-Rückstand';
         }
 
         return implode("\n", $out) . "\n";

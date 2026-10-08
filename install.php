@@ -1,11 +1,39 @@
 <?php
 
+// Overrides der Mindestversionen je Projekt (leer = globaler Wert); idempotent
+rex_sql_table::get(rex::getTable('project_manager_report_override'))
+    ->ensureColumn(new rex_sql_column('domain', 'varchar(255)'))
+    ->ensureColumn(new rex_sql_column('min_rex', 'varchar(20)', true))
+    ->ensureColumn(new rex_sql_column('min_php', 'varchar(20)', true))
+    ->ensureColumn(new rex_sql_column('min_mariadb', 'varchar(20)', true))
+    ->ensureColumn(new rex_sql_column('min_mysql', 'varchar(20)', true))
+    ->setPrimaryKey('domain')
+    ->ensure();
+
 // Cronjob-Zeile einmalig anlegen (Neuinstallation legt keine zweite an).
 // Inaktiv, bis in der Cronjob-Oberfläche Empfänger eingetragen sind.
 $type = 'rex_cronjob_project_manager_report';
 $table = rex::getTable('cronjob');
 
-$exists = rex_sql::factory()->getArray('SELECT id FROM ' . $table . ' WHERE type = ?', [$type]);
+$exists = rex_sql::factory()->getArray('SELECT id, parameters FROM ' . $table . ' WHERE type = ?', [$type]);
+
+// Einmalige Übernahme der Cronjob-Parameter (bis 1.2) in die Addon-Einstellungen.
+// Vorhandene Einstellungen werden nie überschrieben; danach hat der Cronjob keine eigenen Parameter mehr.
+if ([] !== $exists) {
+    $params = json_decode((string) $exists[0]['parameters'], true);
+    $moved = false;
+    foreach (['recipients', 'recipients_report', 'stale_hours', 'syslog_ignore', 'syslog_ignore_messages'] as $key) {
+        if (is_array($params) && array_key_exists($type . '_' . $key, $params)) {
+            if (!$this->hasConfig($key)) {
+                $this->setConfig($key, trim((string) $params[$type . '_' . $key]));
+            }
+            $moved = true;
+        }
+    }
+    if ($moved) {
+        rex_sql::factory()->setQuery('UPDATE ' . $table . ' SET parameters = ? WHERE id = ?', ['{}', $exists[0]['id']]);
+    }
+}
 
 if ([] === $exists) {
     $interval = ['minutes' => [30], 'hours' => [6], 'days' => 'all', 'weekdays' => 'all', 'months' => 'all'];

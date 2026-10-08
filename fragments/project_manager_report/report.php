@@ -52,6 +52,7 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
     ['Fehler', $s['errors'], $s['errors'] ? '#b91c1c' : '#18181b'],
     ['Mit Befund', $s['findings'], $s['findings'] ? '#a16207' : '#18181b'],
     ['Unter Mindestversion', $s['below_min'], $s['below_min'] ? '#b91c1c' : '#18181b'],
+    ['Im Rückstand', $s['behind'], $s['behind'] ? '#b45309' : '#18181b'],
     ['Addon-Updates', $s['updates'], '#18181b'],
 ] as [$label, $value, $color]): ?>
 <td align="center" style="<?= $font ?>padding:8px;background:#fafafa;border:1px solid #e4e4e7;">
@@ -78,9 +79,12 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 <tr><td <?= $td() ?>>Letzter erfolgreicher Abruf: <?= $e(rex_project_manager_report_builder::minute($project['last_success'])) ?></td></tr>
 <?php endif ?>
 <tr><td <?= $td('color:#52525b;') ?>><?= $e(rex_project_manager_report_builder::versions($project)) ?></td></tr>
-<?php foreach ($project['violations'] as $violation): ?>
-<tr><td <?= $td() ?>><strong style="color:#b91c1c;">Mindestversion:</strong> <?= $e(rex_project_manager_report_builder::violationLabel($violation)) ?> liegt unter <?= $e($violation['min']) ?></td></tr>
+<?php foreach (rex_project_manager_report_builder::violations($project) as $violation): ?>
+<tr><td <?= $td() ?>><strong style="color:#b91c1c;">Mindestversion:</strong> <?= $e($violation['label']) ?> liegt unter <?= $e($violation['min']) ?></td></tr>
 <?php endforeach ?>
+<?php if (null !== $project['behind']): ?>
+<tr><td <?= $td() ?>><strong style="color:#b45309;">Rückstand:</strong> <?= $e(rex_project_manager_report_builder::behindLine($project)) ?>, Flottenmaximum der PHP-Linie <?= $e($project['behind']['line']) ?></td></tr>
+<?php endif ?>
 <?php foreach ($project['syslog'] as $group): ?>
 <tr><td <?= $td() ?>>
 <strong><?= $e($group['type']) ?></strong> &nbsp;<?= $e($group['message']) ?>
@@ -136,12 +140,13 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 <?php foreach ($data['projects'] as $project):
     $failed = 'error' === $project['state'];
     $below = rex_project_manager_report_builder::belowMin($project);
-    $low = 'color:#b91c1c;font-weight:bold;'; ?>
+    $low = 'color:#b91c1c;font-weight:bold;';
+    $lag = 'color:#b45309;font-weight:bold;'; ?>
 <tr>
 <td <?= $td() ?>><?= $e($project['domain']) ?></td>
 <td <?= $td(in_array('rex', $below, true) ? $low : '') ?>><?= $e($project['rex'] ?? '-') ?></td>
-<td <?= $td(in_array('php', $below, true) ? $low : '') ?>><?= $e($project['php'] ?? '-') ?></td>
-<td <?= $td() ?>><?= $e($project['db_label'] ?? '-') ?></td>
+<td <?= $td(in_array('php', $below, true) ? $low : (null !== $project['behind'] ? $lag : '')) ?>><?= $e($project['php'] ?? '-') ?><?= null !== $project['behind'] ? ' ~' : '' ?></td>
+<td <?= $td(in_array('db', $below, true) ? $low : '') ?>><?= $e($project['db_label']) ?></td>
 <td <?= $td() ?>><?= $failed ? '-' : $e(count($project['updates'])) ?></td>
 <td <?= $td() ?>><?= $failed ? '-' : $e(array_sum(array_column($project['syslog'], 'count'))) ?></td>
 <td <?= $td() ?>><?= $e($project['last_success'] ? rex_project_manager_report_builder::minute($project['last_success']) : '-') ?></td>
@@ -149,8 +154,8 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 </tr>
 <?php endforeach ?>
 </table>
-<?php if ($s['below_min'] > 0): ?>
-<p <?= $muted ?>><span style="color:#b91c1c;font-weight:bold;">Rot</span> = unter Mindestversion (Einstellungen des Project Managers).</p>
+<?php if ($s['below_min'] > 0 || $s['behind'] > 0): ?>
+<p <?= $muted ?>><span style="color:#b91c1c;font-weight:bold;">Rot</span> = unter Mindestversion, <span style="color:#b45309;font-weight:bold;">Orange mit ~</span> = Patch-Rückstand in der PHP-Linie.</p>
 <?php endif ?>
 
 <p <?= $muted ?>>&nbsp;</p>
