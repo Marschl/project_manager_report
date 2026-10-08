@@ -1,5 +1,9 @@
 # Changelog
 
+## Version 1.4.2 // 08.10.2026
+
+* Die Überschrift der Änderungen nennt jetzt Datum und Uhrzeit des letzten erfolgreichen Versands (`ÄNDERUNGEN seit 2026-10-07 06:30`), in der Data-Mail und im Bericht. Bisher stand nur das Datum, was bei mehreren Versendungen am Tag mehrdeutig war
+
 ## Version 1.4.1 // 08.10.2026
 
 * Der Cronjob ist auch in der Umgebung **Frontend** wählbar (bisher nur Backend und Script). Damit läuft der Report bei Hostern ohne System-Cron, die nur den Aufruf einer URL als Trigger erlauben. Bestehende Cronjob-Zeilen bleiben unverändert; „Frontend“ im Cronjob-Addon anhaken

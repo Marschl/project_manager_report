@@ -281,7 +281,7 @@ $d = $D::compute($ps, $base($ps), $ctx);
 $check('Delta 2: gleicher Stand = keine Aenderungen', 'delta' === $d['mode'] && [] === $d['events'] && ['ÄNDERUNGEN: keine'] === $D::lines($d));
 // 3 Ausfall und Wiederkehr
 $d = $D::compute([$mk('a.de', '8.4.26', '5.21.4', $ok, ['status' => '0']), $mk('b.de', '8.4.26', '5.21.4', $ok)], $base([$mk('a.de', '8.4.26', '5.21.4', $ok), $mk('b.de', '8.4.26', '5.21.4', $ok, ['status' => '0'])]), $ctx);
-$check('Delta 3: STATUS ausgefallen und wieder erreichbar', ['a.de NEU AUSGEFALLEN', 'b.de WIEDER ERREICHBAR'] === $ev($d, 'STATUS') && 'STATUS: a.de NEU AUSGEFALLEN, b.de WIEDER ERREICHBAR' === $D::lines($d)[1] && 'ÄNDERUNGEN seit 2026-10-07' === $D::lines($d)[0]);
+$check('Delta 3: STATUS ausgefallen und wieder erreichbar', ['a.de NEU AUSGEFALLEN', 'b.de WIEDER ERREICHBAR'] === $ev($d, 'STATUS') && 'STATUS: a.de NEU AUSGEFALLEN, b.de WIEDER ERREICHBAR' === $D::lines($d)[1] && 'ÄNDERUNGEN seit 2026-10-07 06:30' === $D::lines($d)[0]);
 $check('Delta 3: ausgefallenes Projekt erzeugt keine weiteren Ereignisse', [] === $ev($d, 'KERN') && [] === $ev($d, 'BEFUND NEU'));
 // 4 Kern
 $d = $D::compute([$mk('a.de', '8.4.26', '5.21.4', '10.11.18-MariaDB')], $base([$mk('a.de', '8.4.24', '5.21.2', $ok)]), $ctx);
@@ -371,7 +371,7 @@ $delta = $D::compute([$pe, $pp, $pu, $pu2], $base([$mk('err.de', '8.4.26', '5.21
 $mail = $B::buildMachine([$pe, $pp, $pu, $pu2], $day2, $delta);
 $ml = explode("\n", $mail['body']);
 $check('Data-Mail: Kopf unveraendert, Pausiert nur bei N > 0', str_starts_with($ml[0], 'Lauf: 2026-10-08 06:30 | Abgefragt: 4 | OK: 2 | Fehler: 1 | Mit Befund: 1 | Ältester Abruf: ') && str_ends_with($ml[0], ' | Pausiert: 1') && 'SYSLOG_IGNORIERT: 0' === $ml[1]);
-$check('Data-Mail: Reihenfolge der Abschnitte', 'ÄNDERUNGEN seit 2026-10-07' === $ml[3] && 'STATUS: err.de NEU AUSGEFALLEN' === $ml[4]);
+$check('Data-Mail: Reihenfolge der Abschnitte', 'ÄNDERUNGEN seit 2026-10-07 06:30' === $ml[3] && 'STATUS: err.de NEU AUSGEFALLEN' === $ml[4]);
 $check('Data-Mail: FEHLER-, PAUSIERT- und Aggregatzeile', in_array('FEHLER: err.de seit 7 Tagen (letzter Erfolg 2026-10-01)', $ml, true) && in_array('PAUSIERT: pause.de (Relaunch)', $ml, true) && in_array('ADDON-UPDATES AGGREGIERT: mform 10.0.2 x2 | cke5 7.8.0 x1', $ml, true));
 $check('Data-Mail: pausiertes Projekt ohne Ereignis, ohne FEHLER-Zeile, status=paused', !str_contains(implode("\n", $D::lines($delta)), 'pause.de') && !str_contains($mail['body'], 'FEHLER: pause.de') && str_contains($mail['body'], 'pause.de | - | - | - | addon_updates=- | syslog=- | below_min=- | behind=- | status=paused | last_ok=-'));
 $check('Data-Mail: Betreff zaehlt pausiertes Projekt nicht als Fehler', str_contains($mail['subject'], '| 1 mit Befund | 1 Fehler'));
@@ -383,7 +383,7 @@ for ($i = 1; $i <= 17; ++$i) {
 $check('Aggregatzeile: hoechstens 15 Eintraege + weitere', str_contains($B::buildMachine($agg, $day2)['body'], ' | +2 weitere') && 15 === substr_count($B::buildMachine($agg, $day2)['body'], ' x1'));
 // Bericht mit Delta (Text)
 $rep = $B::buildReport([$pe, $pp, $pu, $pu2], $day2, false, $delta);
-$check('Bericht-Text: Aenderungen, Fehlerdauer, Pause', str_contains($rep['text'], "ÄNDERUNGEN SEIT 2026-10-07\n  STATUS: err.de NEU AUSGEFALLEN") && str_contains($rep['text'], 'FEHLER seit 7 Tagen (letzter Erfolg 2026-10-01)') && str_contains($rep['text'], "PAUSIERT (kein Befund)\npause.de: Relaunch") && str_contains($rep['text'], '1 pausiert'));
+$check('Bericht-Text: Aenderungen, Fehlerdauer, Pause', str_contains($rep['text'], "ÄNDERUNGEN SEIT 2026-10-07 06:30\n  STATUS: err.de NEU AUSGEFALLEN") && str_contains($rep['text'], 'FEHLER seit 7 Tagen (letzter Erfolg 2026-10-01)') && str_contains($rep['text'], "PAUSIERT (kein Befund)\npause.de: Relaunch") && str_contains($rep['text'], '1 pausiert'));
 $repBase = $B::buildReport([$pu], $day2, false, $D::compute([$pu], [], $ctx));
 $check('Bericht-Text: Basislauf', str_contains($repBase['text'], "ÄNDERUNGEN\nBasislauf, keine Vergleichsdaten."));
 $check('Delta-Zeilen fuer Report: Ereignis, Projekt, Aenderung', [['STATUS', 'err.de', 'NEU AUSGEFALLEN']] === array_slice($D::rows($delta), 0, 1));

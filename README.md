@@ -134,7 +134,7 @@ Pro Domain lassen sich eigene `min_rex`, `min_php`, `min_mariadb`, `min_mysql` e
 | `SYSLOG NEU` | Meldungen, die seit der Baseline erstmals gesehen wurden (nach Ausnahmeliste); Wegfall wird nicht gemeldet |
 | `PROJEKTE` | `+ neu im Monitoring | - entfernt` |
 
-Neue Projekte erscheinen nur unter `PROJEKTE`, ausgefallene Projekte erzeugen außer `STATUS` keine Ereignisse. Die Überschrift nennt das tatsächliche Datum (`ÄNDERUNGEN seit 2026-10-07`); ohne Änderungen steht `ÄNDERUNGEN: keine`.
+Neue Projekte erscheinen nur unter `PROJEKTE`, ausgefallene Projekte erzeugen außer `STATUS` keine Ereignisse. Die Überschrift nennt Datum und Uhrzeit des letzten erfolgreichen Versands (`ÄNDERUNGEN seit 2026-10-07 06:30`); ohne Änderungen steht `ÄNDERUNGEN: keine`.
 
 **Fehlerdauer:** Je ausgefallenem Projekt eine Zeile `FEHLER: domain seit 842 Tagen (letzter Erfolg 2024-06-20)` bzw. `seit Beginn des Monitorings (nie erfolgreich)`. Die Dauer läuft ab dem letzten bekannten Erfolg, bei nie erfolgreichem Abruf ab dem ersten Lauf des Addons.
 
@@ -152,7 +152,7 @@ Die Mail ist für die automatische Auswertung (z. B. durch einen KI-Agenten) ged
 Lauf: 2026-10-08 06:30 | Abgefragt: 14 | OK: 13 | Fehler: 1 | Mit Befund: 3 | Ältester Abruf: 2026-10-07 00:00
 SYSLOG_IGNORIERT: 12
 
-ÄNDERUNGEN seit 2026-10-07
+ÄNDERUNGEN seit 2026-10-07 06:30
 STATUS: b.de NEU AUSGEFALLEN
 KERN: a.de rex 5.21.2 -> 5.21.4
 UPDATE NEU: cke5 7.8.0 bei 12 Projekten | mform 10.0.2 bei 3 Projekten (a.de, c.de, d.de)

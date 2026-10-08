@@ -33,7 +33,7 @@ class rex_project_manager_report_delta
         }
 
         $collector = 'rex_project_manager_report_collector';
-        $since = substr((string) max(array_column($baseline, 'reported_at')), 0, 10);
+        $since = substr((string) max(array_column($baseline, 'reported_at')), 0, 16);
 
         // heute und Baseline mit derselben, aktuellen Konfiguration bewerten
         $cur = [];
