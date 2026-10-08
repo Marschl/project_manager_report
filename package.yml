@@ -1,0 +1,16 @@
+package: project_manager_report
+version: '1.2.1'
+author: 'Marcel Scherkamp'
+
+# Konsolen-Befehl: Vorschau der Mail ohne Versand
+console_commands:
+    project_manager_report:preview: rex_command_project_manager_report_preview
+
+requires:
+    redaxo: '^5.17'
+    php:
+        version: '>=8.1'
+    packages:
+        cronjob: '>=2.3.0'
+        phpmailer: '>=2.0'
+        project_manager/server: '>=1.5.0'
