@@ -70,6 +70,7 @@ Gefilterte Einträge erscheinen im Bericht getrennt als "Syslog ohne Befund".
 BETRIEB
 
 - Läuft als Cronjob-Typ ohne eigene Parameter, wählbar in den Umgebungen "script" (Server-Cron mit cronjob:run) und "frontend" (für Hoster ohne System-Cron, ausgelöst durch einen URL-Trigger). Der Versand läuft über das Addon phpmailer. Der Cronjob wird bei der Installation inaktiv angelegt, bis Empfänger eingetragen sind.
+- Ohne System-Cron (Shared Hosting, nur URL-Aufrufe erlaubt): beim Report-Cronjob und bei den Abruf-Cronjobs des Project Managers die Umgebung "Frontend" anhaken und beim Hoster eine Seite des Projekts regelmäßig aufrufen lassen (mindestens alle 15 bis 60 Minuten, z. B. https://domain.tld/?cron=1, nicht aus einem Seiten- oder CDN-Cache). Das Cronjob-Addon führt dann beim Aufruf die fälligen Jobs aus; der Report läuft beim ersten Aufruf nach der eingestellten Zeit.
 - Alle Einstellungen (Empfänger, Schwelle für "veraltet", Syslog-Filter, Mindestversionen, Testlauf) und die Overrides je Projekt liegen in den Backend-Seiten des Addons.
 - Die Mail kommt auch, wenn nichts auffällig ist. Bleibt sie aus, ist der Versand defekt. Schlägt er fehl, steht ein Eintrag im REDAXO-Syslog.
 - Testlauf: Die Einstellung "Testlauf" mit Testadresse oder der Konsolenbefehl project_manager_report:send --dry-run sendet nur an die Testadresse und speichert nichts. Mit --no-advance-baseline bleibt der gemeldete Stand bei einem manuellen Versand unverändert.
