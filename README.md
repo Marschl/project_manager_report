@@ -13,8 +13,17 @@ Das Addon liest nur die Datenbank des Project Managers: keine Änderung am Abruf
 
 1. Addon installieren. Dabei entsteht der Cronjob **Projekt Manager: Status-Mail** (Umgebung `script`, täglich 06:30, **inaktiv**).
 2. Im Backend unter *Projekt Manager Report → Einstellungen* die Empfänger eintragen (eines oder beide Felder) und im Cronjob-Addon den Job aktivieren.
-3. System-Cron auf `redaxo/bin/console cronjob:run` einrichten (alle 5 Minuten).
-4. Die Abruf-Cronjobs des Project Managers laufen nur in der Umgebung `backend`; damit der Report nach dem Abruf läuft, dort zusätzlich `script` anhaken (Cronjob-Oberfläche, keine Code-Änderung).
+3. System-Cron auf `redaxo/bin/console cronjob:run` einrichten (alle 5 Minuten). Die Abruf-Cronjobs des Project Managers müssen dafür ebenfalls `script` angehakt haben.
+
+### Betrieb ohne System-Cron (nur URL-Trigger)
+
+Erlaubt der Hoster keine Skripte, sondern nur den Aufruf einer URL:
+
+1. Beim Cronjob **Projekt Manager: Status-Mail** und bei den Abruf-Cronjobs des Project Managers die Umgebung `Frontend` anhaken.
+2. Beim Hoster einen Trigger auf eine Seite des Projekts einrichten, mindestens alle 15 bis 60 Minuten, z. B. `https://domain.tld/?cron=1`. Die Seite darf nicht aus einem Seiten- oder CDN-Cache kommen, sonst startet REDAXO nicht.
+3. Der Report läuft beim ersten Trigger nach der eingestellten Zeit (06:30); die Uhrzeit verschiebt sich um höchstens das Trigger-Intervall. Fällige Jobs laufen nach Fälligkeit sortiert, die Abrufe also vor dem Report.
+
+Der Aufruf des Triggers dauert so lange wie die fälligen Jobs (Report: Datenbank und zwei Mails; Abrufe: höchstens 5 Sekunden je Domain, parallel); `max_execution_time` des Hosters beachten. Die Umgebung `Backend` lässt sich per URL nicht auslösen.
 
 Der Versand erfolgt mit `rex_mailer` (Addon `phpmailer`). Schlägt er fehl, steht ein Eintrag im REDAXO-Syslog und der Cronjob meldet einen Fehler; die andere Mail wird trotzdem versucht.
 

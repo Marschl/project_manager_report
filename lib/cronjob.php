@@ -1,7 +1,8 @@
 <?php
 
 /**
- * Cronjob-Typ "Projekt Manager: Status-Mail". Die Zeile in rex_cronjob legt install.php an (Umgebung "script").
+ * Cronjob-Typ "Projekt Manager: Status-Mail". Die Zeile in rex_cronjob legt install.php an (Umgebung "script"; "frontend" ist für Hoster
+ * ohne System-Cron wählbar, die Aufrufe löst dann ein URL-Trigger aus).
  * Keine eigenen Parameter: Einstellungen unter Projekt Manager Report → Einstellungen, Ablauf in rex_project_manager_report_service.
  */
 class rex_cronjob_project_manager_report extends rex_cronjob
@@ -29,7 +30,7 @@ class rex_cronjob_project_manager_report extends rex_cronjob
 
     public function getEnvironments()
     {
-        return ['backend', 'script'];
+        return ['frontend', 'backend', 'script'];
     }
 
     /** Keine typspezifischen Parameter: alles steht unter Projekt Manager Report, Einstellungen. */

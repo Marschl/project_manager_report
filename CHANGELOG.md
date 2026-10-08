@@ -1,5 +1,9 @@
 # Changelog
 
+## Version 1.4.1 // 08.10.2026
+
+* Der Cronjob ist auch in der Umgebung **Frontend** wählbar (bisher nur Backend und Script). Damit läuft der Report bei Hostern ohne System-Cron, die nur den Aufruf einer URL als Trigger erlauben. Bestehende Cronjob-Zeilen bleiben unverändert; „Frontend“ im Cronjob-Addon anhaken
+
 ## Version 1.4.0 // 08.10.2026
 
 * **Delta gegenüber dem letzten Versand:** beide Mails nennen die Änderungen seit dem zuletzt erfolgreich versendeten Stand (je Mailtyp). Gespeichert werden nur Rohdaten, Befunde werden mit der aktuellen Konfiguration neu berechnet (keine Scheindeltas bei geänderten Mindestversionen, `(Regeländerung)` bei echten Änderungen nach einer Regeländerung). Neue Tabellen `rex_project_manager_report_reported`, `_state` und `_syslog_seen` (Addon nach dem Update neu installieren)
