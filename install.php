@@ -1,5 +1,39 @@
 <?php
 
+// Zustandsspeicher des Delta-Abgleichs (nur Rohdaten und Zeiten); idempotent
+rex_sql_table::get(rex::getTable('project_manager_report_reported'))
+    ->ensureColumn(new rex_sql_column('mail_type', 'varchar(10)'))
+    ->ensureColumn(new rex_sql_column('project_key', 'varchar(255)'))
+    ->ensureColumn(new rex_sql_column('domain', 'varchar(255)'))
+    ->ensureColumn(new rex_sql_column('status', 'varchar(10)'))
+    ->ensureColumn(new rex_sql_column('payload', 'longtext', true))
+    ->ensureColumn(new rex_sql_column('reported_at', 'datetime'))
+    ->setPrimaryKey(['mail_type', 'project_key'])
+    ->ensure();
+
+rex_sql_table::get(rex::getTable('project_manager_report_state'))
+    ->ensureColumn(new rex_sql_column('project_key', 'varchar(255)'))
+    ->ensureColumn(new rex_sql_column('first_failed_at', 'datetime', true))
+    ->ensureColumn(new rex_sql_column('last_success_at', 'datetime', true))
+    ->ensureColumn(new rex_sql_column('monitoring_pausiert', 'tinyint(1)', false, '0'))
+    ->ensureColumn(new rex_sql_column('pause_grund', 'varchar(255)', true))
+    ->setPrimaryKey('project_key')
+    ->ensure();
+
+rex_sql_table::get(rex::getTable('project_manager_report_syslog_seen'))
+    ->ensureColumn(new rex_sql_column('project_key', 'varchar(255)'))
+    ->ensureColumn(new rex_sql_column('hash', 'varchar(40)'))
+    ->ensureColumn(new rex_sql_column('type', 'varchar(100)'))
+    ->ensureColumn(new rex_sql_column('msg', 'text'))
+    ->ensureColumn(new rex_sql_column('file', 'varchar(500)'))
+    ->ensureColumn(new rex_sql_column('line', 'varchar(20)'))
+    ->ensureColumn(new rex_sql_column('first_seen', 'datetime'))
+    ->ensureColumn(new rex_sql_column('last_seen', 'datetime'))
+    ->ensureColumn(new rex_sql_column('count', 'int(10) unsigned', false, '1'))
+    ->setPrimaryKey(['project_key', 'hash'])
+    ->ensureIndex(new rex_sql_index('last_seen', ['last_seen']))
+    ->ensure();
+
 // Overrides der Mindestversionen je Projekt (leer = globaler Wert); idempotent
 rex_sql_table::get(rex::getTable('project_manager_report_override'))
     ->ensureColumn(new rex_sql_column('domain', 'varchar(255)'))

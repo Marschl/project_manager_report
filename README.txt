@@ -1,6 +1,6 @@
 Project Manager Report
 
-Das Addon ergänzt den Project Manager (Plugin "server") um eine tägliche Status-Auswertung. Der Project Manager sammelt Daten aus mehreren REDAXO-Installationen. Dieses Addon fasst sie in zwei Mails zusammen, damit niemand jedes Projekt einzeln im Backend prüfen muss.
+Das Addon ergänzt den Project Manager (Plugin "server") um eine tägliche Status-Auswertung. Der Project Manager sammelt Daten aus mehreren REDAXO-Installationen. Dieses Addon fasst sie in zwei Mails zusammen und nennt jeweils, was sich seit dem letzten Versand geändert hat. So muss niemand jedes Projekt einzeln im Backend prüfen, und ein automatischer Check sieht nur das Neue.
 
 
 DIE ZWEI MAILS
@@ -10,18 +10,28 @@ Reiner Text mit festem, parsebarem Betreff:
 
 [Projekt Manager - Data] 2026-10-08 | 14 Projekte | 3 mit Befund | 1 Fehler
 
-Sie besteht aus einer Kopfzeile (mit ältestem Abruf und der Zahl unterdrückter Syslog-Einträge) und einem Inventar mit Spaltenüberschrift, einer Zeile pro Projekt:
+Sie besteht aus einer Kopfzeile, dem Abschnitt "ÄNDERUNGEN", wenigen Kurzzeilen (Fehlerdauer, pausierte Projekte, aggregierte Addon-Updates) und einem Inventar mit Spaltenüberschrift, einer Zeile pro Projekt:
 
 # domain | rex | php | db | addon_updates | syslog | below_min | behind | status | last_ok
 
-In addon_updates stehen die Namen der Addons mit Update, in below_min die unterschrittenen Mindestversionen (db, php, rex), in behind der PHP-Patch-Rückstand, status ist ok, stale (veraltet) oder error, last_ok der letzte erfolgreiche Abruf. Detail-Blöcke je Projekt und Syslog-Texte gibt es in dieser Mail bewusst nicht: Das Format ist so knapp, dass eine automatische Auswertung, etwa durch einen KI-Agenten, wenig Aufwand (Tokens) hat. Die Details stehen im Bericht.
+In addon_updates stehen die Namen der Addons mit Update, in below_min die unterschrittenen Mindestversionen (db, php, rex), in behind der PHP-Patch-Rückstand, status ist ok, stale (veraltet), error oder paused, last_ok der letzte erfolgreiche Abruf. Detail-Blöcke je Projekt und Syslog-Texte gibt es in dieser Mail bewusst nicht: Das Format ist so knapp, dass eine automatische Auswertung, etwa durch einen KI-Agenten, wenig Aufwand (Tokens) hat. Die Details stehen im Bericht.
 
 2. Bericht (für Menschen)
-HTML mit Text-Alternative. Abschnitte: Zusammenfassung, Handlungsbedarf, Addon-Updates, Syslog ohne Befund und eine Tabelle aller Projekte mit Status (OK, BEFUND, VERALTET, FEHLER). Unterschrittene Mindestversionen und Patch-Rückstände sind markiert. Betreff:
+HTML mit Text-Alternative. Abschnitte: Zusammenfassung, Änderungen seit dem letzten Versand, Handlungsbedarf (mit Fehlerdauer), Pausiert, Addon-Updates, Syslog ohne Befund und eine Tabelle aller Projekte mit Status (OK, BEFUND, VERALTET, FEHLER, PAUSIERT). Unterschrittene Mindestversionen und Patch-Rückstände sind markiert. Betreff:
 
 [Projekt Manager - Report] 2026-10-08 | 3 mit Befund | 1 Fehler | 5 Addon-Updates
 
 Beide Mails haben eigene Empfängerlisten, einzustellen im Backend unter "Projekt Manager Report, Einstellungen". Bleibt ein Feld leer, entfällt die jeweilige Mail.
+
+
+ÄNDERUNGEN SEIT DEM LETZTEN VERSAND
+
+- Baseline ist der Stand der letzten erfolgreich versendeten Mail, getrennt je Mailtyp. Schlägt der Versand fehl, bleibt der Stand unverändert, die nächste Mail trägt den ausgefallenen Zeitraum nach. Der erste Lauf ist ein Basislauf ohne Vergleichsdaten.
+- Gemeldet werden: Ausfall und Wiederkehr eines Projekts (STATUS), Änderungen an REDAXO, PHP und Datenbank (KERN), angewendete Addon-Updates (ADDON ANGEWENDET), neu verfügbare Updates (UPDATE NEU, zusammengefasst je Addon und Zielversion, z. B. "cke5 7.8.0 bei 35 Projekten"), neue und behobene Befunde (BEFUND NEU, BEFUND BEHOBEN), neue Syslog-Meldungen (SYSLOG NEU) sowie neue und entfernte Projekte (PROJEKTE).
+- Gespeichert werden nur Rohdaten (Versionen, Status, Zeiten), keine Befunde. Befunde und Delta werden mit der aktuellen Konfiguration berechnet; so entstehen keine Scheindeltas, wenn Mindestversionen geändert werden. Echte Änderungen nach einer Regeländerung sind mit "(Regeländerung)" gekennzeichnet.
+- Fehlerdauer: "FEHLER: domain seit 842 Tagen (letzter Erfolg 2024-06-20)".
+- Projekte lassen sich pausieren (Backend, Projekte): kein Fehler, kein Befund, keine Änderungen, eigener Abschnitt "PAUSIERT".
+- Neue Syslog-Meldungen werden über einen Hash aus Meldung, Datei und Zeile erkannt und 90 Tage aufbewahrt.
 
 
 WAS ALS BEFUND ZÄHLT
@@ -46,7 +56,7 @@ Alle Werte sind im Backend unter "Projekt Manager Report, Einstellungen" frei ei
 
 Unter "Projekte" lassen sich pro Domain eigene Mindestversionen hinterlegen, damit bewusst abweichende Projekte nicht dauerhaft als Befund gelten. Leer = globaler Wert, 0.0 = Regel für dieses Projekt aus.
 
-Versionsangaben werden bereinigt: PHP "8.4.24-nmm1" wird zu 8.4.24, bei der Datenbank fallen Suffixe und das MariaDB-Präfix "5.5.5-" weg. Ist danach keine Version erkennbar, gilt sie als unbekannt: das ist kein Befund, die Mail weist aber darauf hin. REDAXO-4-Projekte prüfen die REDAXO-Mindestversion nicht. Die Mindestwerte des Project Managers werden nicht mehr verwendet; dessen Einstellungen "Addons ausschließen" und "Versionen ausschließen" gelten weiter für die Update-Liste.
+Versionsangaben werden bereinigt: PHP "8.4.24-nmm1" wird zu 8.4.24, bei der Datenbank fallen Suffixe und das MariaDB-Präfix "5.5.5-" weg. Ist danach keine Version erkennbar, gilt sie als unbekannt: das ist kein Befund, die Mail weist aber darauf hin. REDAXO-4-Projekte prüfen die REDAXO-Mindestversion nicht. Die Einstellungen "Addons ausschließen" und "Versionen ausschließen" des Project Managers gelten weiter für die Update-Liste.
 
 
 SYSLOG FILTERN
@@ -57,15 +67,14 @@ SYSLOG FILTERN
 Gefilterte Einträge erscheinen im Bericht getrennt als "Syslog ohne Befund".
 
 
-EIGENSCHAFTEN
+BETRIEB
 
-- Liest nur die Datenbank des Project Managers. Es gibt keine zusätzlichen externen Aufrufe und keine Änderung am Abruf.
-- Läuft als Cronjob-Typ, empfohlen in der Umgebung "script" (Server-Cron mit cronjob:run). Der Versand läuft über das Addon phpmailer.
-- Alle Einstellungen (Empfänger, Schwelle für "veraltet", Syslog-Filter, Mindestversionen) und die Overrides je Projekt liegen in den Backend-Seiten des Addons. Der Cronjob selbst hat keine Parameter.
+- Läuft als Cronjob-Typ ohne eigene Parameter, empfohlen in der Umgebung "script" (Server-Cron mit cronjob:run). Der Versand läuft über das Addon phpmailer. Der Cronjob wird bei der Installation inaktiv angelegt, bis Empfänger eingetragen sind.
+- Alle Einstellungen (Empfänger, Schwelle für "veraltet", Syslog-Filter, Mindestversionen, Testlauf) und die Overrides je Projekt liegen in den Backend-Seiten des Addons.
 - Die Mail kommt auch, wenn nichts auffällig ist. Bleibt sie aus, ist der Versand defekt. Schlägt er fehl, steht ein Eintrag im REDAXO-Syslog.
-- Mit dem Konsolenbefehl project_manager_report:preview sieht man beide Mails, ohne sie zu senden.
+- Testlauf: Die Einstellung "Testlauf" mit Testadresse oder der Konsolenbefehl project_manager_report:send --dry-run sendet nur an die Testadresse und speichert nichts. Mit --no-advance-baseline bleibt der gemeldete Stand bei einem manuellen Versand unverändert.
+- Mit project_manager_report:preview sieht man beide Mails samt Änderungen, ohne zu senden oder zu speichern.
 - Das HTML des Berichts liegt als Fragment vor und lässt sich im project-Addon überschreiben.
-- Der Cronjob wird bei der Installation inaktiv angelegt, bis Empfänger eingetragen sind.
 
 
 VORAUSSETZUNGEN
@@ -75,7 +84,7 @@ REDAXO 5.17 oder neuer, PHP 8.1 oder neuer, die Addons cronjob, phpmailer und pr
 
 HINWEISE
 
-- Der Project Manager hält nur den letzten Abruf je Projekt. Einen Verlauf oder Vergleich mit früheren Läufen gibt es daher nicht.
+- Der Project Manager hält nur den letzten Abruf je Projekt. Den Verlauf bildet dieses Addon über eigene Zustandstabellen ab, beginnend mit dem ersten Lauf; ein nachträglicher Import früherer Stände ist nicht möglich.
 - Der Client des Project Managers meldet die "neueste Version" eines Addons nicht immer korrekt. Das Addon meldet Updates nur, wenn die gemeldete Version tatsächlich höher ist. Ein vorhandenes Update kann trotzdem fehlen.
 - Core-, PHP- und Datenbankversionen werden nur gegen die eingestellten Mindestwerte und den Rückstand innerhalb der eigenen Projekte geprüft, nicht gegen aktuelle Releases oder Sicherheitsmeldungen.
 - Die Syslog-Texte stammen aus den überwachten Installationen und sind ungeprüft. Wer die kompakte Mail automatisch auswertet, muss sie als Daten behandeln, nicht als Anweisungen.

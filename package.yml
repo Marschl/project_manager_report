@@ -1,5 +1,5 @@
 package: project_manager_report
-version: '1.3.0'
+version: '1.4.0'
 author: 'Marcel Scherkamp'
 
 page:
@@ -12,9 +12,10 @@ page:
         projects:
             title: 'translate:project_manager_report_projects'
 
-# Konsolen-Befehl: Vorschau der Mail ohne Versand
+# Konsolen-Befehle: Vorschau ohne Versand, manueller Versand
 console_commands:
     project_manager_report:preview: rex_command_project_manager_report_preview
+    project_manager_report:send: rex_command_project_manager_report_send
 
 # Startwerte der Einstellungen (leer gespeichert = Regel aus)
 default_config:
@@ -29,6 +30,8 @@ default_config:
     stale_hours: '30'
     syslog_ignore: 'Info,logevent,Deprecated,Notice'
     syslog_ignore_messages: ''
+    dry_run: '0'
+    dry_run_address: ''
 
 # Prüfskript gehört nicht ins Installer-Paket
 installer_ignore:

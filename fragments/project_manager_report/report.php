@@ -13,14 +13,15 @@ $s = $data['summary'];
 
 $e = static fn (mixed $value): string => rex_escape((string) $value);
 
-$colors = ['FEHLER' => '#b91c1c', 'VERALTET' => '#b45309', 'BEFUND' => '#a16207', 'OK' => '#15803d'];
+$colors = ['FEHLER' => '#b91c1c', 'VERALTET' => '#b45309', 'BEFUND' => '#a16207', 'OK' => '#15803d', 'PAUSIERT' => '#52525b'];
 $badge = static function (string $status) use ($colors): string {
     return '<span style="display:inline-block;padding:2px 8px;border-radius:3px;background:' . $colors[$status] . ';color:#ffffff;font-size:12px;font-weight:bold;">' . rex_escape($status) . '</span>';
 };
 
 $font = 'font-family:Arial,Helvetica,sans-serif;';
-$th = 'style="' . $font . 'font-size:12px;text-align:left;padding:6px 8px;background:#e4e4e7;color:#27272a;border-bottom:1px solid #d4d4d8;"';
-$td = static fn (string $extra = ''): string => 'style="' . $font . 'font-size:13px;padding:6px 8px;border-bottom:1px solid #e4e4e7;color:#18181b;' . $extra . '"';
+// Schrift und Farbe erbt alles vom Container; kurze Inline-Styles halten die Mail klein (Gmail kürzt HTML ab etwa 102 KB)
+$th = 'style="font-size:12px;text-align:left;padding:6px 8px;background:#e4e4e7;border-bottom:1px solid #d4d4d8;"';
+$td = static fn (string $extra = ''): string => 'style="padding:6px 8px;border-bottom:1px solid #e4e4e7;' . $extra . '"';
 $h2 = 'style="' . $font . 'font-size:15px;font-weight:bold;color:#18181b;margin:24px 0 8px 0;"';
 $muted = 'style="' . $font . 'font-size:13px;color:#52525b;margin:0 0 8px 0;"';
 $mono = 'font-family:Consolas,Menlo,monospace;font-size:12px;';
@@ -38,7 +39,7 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;">
 <tr><td align="center" style="padding:16px;">
 <table role="presentation" width="720" cellpadding="0" cellspacing="0" style="width:100%;max-width:720px;background:#ffffff;border:1px solid #d4d4d8;">
-<tr><td style="padding:20px 24px;">
+<tr><td style="padding:20px 24px;<?= $font ?>font-size:13px;color:#18181b;">
 
 <p style="<?= $font ?>font-size:20px;font-weight:bold;color:#18181b;margin:0 0 4px 0;">Projekt Manager – Statusbericht</p>
 <p <?= $muted ?>>Stand: <?= $e($data['now']) ?></p>
@@ -64,6 +65,26 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 </table>
 <p <?= $muted ?>>Addon-Updates sind kein Befund. <?= $e($s['stale']) ?> Projekt(e) mit veraltetem Abruf.</p>
 
+<?php if (null !== $data['delta']): ?>
+<p <?= $h2 ?>>Änderungen<?= 'delta' === $data['delta']['mode'] ? ' seit ' . $e($data['delta']['since']) : '' ?></p>
+<?php if ('base' === $data['delta']['mode']): ?>
+<p <?= $muted ?>>Basislauf, keine Vergleichsdaten.</p>
+<?php elseif ([] === $data['delta']['rows']): ?>
+<p <?= $muted ?>>Keine Änderungen.</p>
+<?php else: ?>
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e4e4e7;">
+<tr><th <?= $th ?>>Ereignis</th><th <?= $th ?>>Projekt</th><th <?= $th ?>>Änderung</th></tr>
+<?php foreach ($data['delta']['rows'] as [$type, $domain, $change]): ?>
+<tr>
+<td <?= $td('font-weight:bold;') ?>><?= $e($type) ?></td>
+<td <?= $td() ?>><?= $e($domain) ?></td>
+<td <?= $td($mono) ?>><?= $e($change) ?></td>
+</tr>
+<?php endforeach ?>
+</table>
+<?php endif ?>
+<?php endif ?>
+
 <p <?= $h2 ?>>Handlungsbedarf</p>
 <?php if ([] === $data['attention']): ?>
 <p <?= $muted ?>>Keine Befunde.</p>
@@ -73,7 +94,7 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 12px 0;border:1px solid #e4e4e7;border-left:4px solid <?= $colors[$status] ?>;">
 <tr><td <?= $td('background:#fafafa;') ?>><strong><?= $e($project['domain']) ?></strong> &nbsp;<?= $badge($status) ?></td></tr>
 <?php if ('error' === $project['state']): ?>
-<tr><td <?= $td() ?>><?= $project['last_success'] ? 'Abruf fehlgeschlagen, letzter Erfolg ' . $e(rex_project_manager_report_builder::minute($project['last_success'])) : 'Abruf fehlgeschlagen, bisher kein erfolgreicher Abruf' ?></td></tr>
+<tr><td <?= $td() ?>>Abruf fehlgeschlagen <?= $e(rex_project_manager_report_builder::errorSince($project)) ?></td></tr>
 <?php else: ?>
 <?php if ('stale' === $project['state']): ?>
 <tr><td <?= $td() ?>>Letzter erfolgreicher Abruf: <?= $e(rex_project_manager_report_builder::minute($project['last_success'])) ?></td></tr>
@@ -96,20 +117,27 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 </table>
 <?php endforeach ?>
 
+<?php if ([] !== $data['paused']): ?>
+<p <?= $h2 ?>>Pausiert (kein Befund)</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e4e4e7;">
+<?php foreach ($data['paused'] as $project): ?>
+<tr><td <?= $td() ?>><?= $e($project['domain']) ?></td><td <?= $td('color:#52525b;') ?>><?= $e($project['pause_reason'] ?? '') ?></td></tr>
+<?php endforeach ?>
+</table>
+<?php endif ?>
+
 <p <?= $h2 ?>>Addon-Updates (kein Befund)</p>
 <?php if ([] === $data['updates']): ?>
 <p <?= $muted ?>>Keine Updates gemeldet.</p>
 <?php else: ?>
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e4e4e7;">
-<tr><th <?= $th ?>>Projekt</th><th <?= $th ?>>Addon</th><th <?= $th ?>>Installiert</th><th <?= $th ?>>Verfügbar</th></tr>
-<?php foreach ($data['updates'] as $project): foreach ($project['updates'] as $u): ?>
+<tr><th <?= $th ?>>Projekt</th><th <?= $th ?>>Addons (installiert -> verfügbar)</th></tr>
+<?php foreach ($data['updates'] as $project): ?>
 <tr>
 <td <?= $td() ?>><?= $e($project['domain']) ?></td>
-<td <?= $td() ?>><?= $e($u['name']) ?></td>
-<td <?= $td($mono) ?>><?= $e($u['current']) ?></td>
-<td <?= $td($mono) ?>><?= $e($u['latest']) ?></td>
+<td <?= $td($mono) ?>><?= $e(implode(', ', array_map(static fn (array $u) => $u['name'] . ' ' . $u['current'] . ' -> ' . $u['latest'], $project['updates']))) ?></td>
 </tr>
-<?php endforeach; endforeach ?>
+<?php endforeach ?>
 </table>
 <?php endif ?>
 

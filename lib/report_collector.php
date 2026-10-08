@@ -19,7 +19,9 @@
  *   db_label     string        für Text: "MariaDB 10.11.14", "DB unbekannt" oder "-"
  *   violations   list<array{key: 'db'|'php'|'rex', label: string, min: string}>   unterschrittene Mindestversionen
  *   behind       array{line: string, actual: string, max: string, lag: int}|null  Patch-Rückstand in der PHP-Linie
- *   updates      list<array{name: string, current: string, latest: string}>
+ *   addons       array<string, string>   installierte Addons mit Version (Rohdaten für das Delta)
+ *   updates_all  array<string, string>   Addon => Zielversion, aktive Addons mit neuerer Version, ungefiltert (Rohdaten)
+ *   updates      list<array{name: string, current: string, latest: string}>   updates_all nach Ausschlüssen und Vorabversions-Regel
  *   syslog       list<array{type: string, message: string, file: string, line: string, count: int}>   Befund-Einträge der 24 h
  *   ignored      array<string, int>   durch Typ oder Meldungsmuster ignorierte Einträge der 24 h, je Typ (kein Befund)
  */
@@ -41,6 +43,8 @@ class rex_project_manager_report_collector
         'stale_hours' => '30',
         'syslog_ignore' => 'Info,logevent,Deprecated,Notice',
         'syslog_ignore_messages' => '',
+        'dry_run' => '0',
+        'dry_run_address' => '',
     ];
 
     private const SYSLOG_WINDOW_SECONDS = 86400;
@@ -85,7 +89,7 @@ class rex_project_manager_report_collector
      * Einstellungen des Addons (Seite "Einstellungen"), Overrides je Projekt und die Ausschlüsse des Project Managers.
      * Nie gespeichert = Startwert; leer gespeichert oder ungültig = Regel aus (null).
      *
-     * @return array{min_rex: ?string, min_php: ?string, min_mariadb: ?string, min_mysql: ?string, max_patch_lag: ?int, ignore_prerelease: bool, recipients: list<string>, recipients_report: list<string>, stale_hours: int, syslog_ignore: list<string>, ignore_messages: list<string>, skip_addon: list<string>, skip_addon_version: list<string>, overrides: array<string, array<string, ?string>>}
+     * @return array{min_rex: ?string, min_php: ?string, min_mariadb: ?string, min_mysql: ?string, max_patch_lag: ?int, ignore_prerelease: bool, recipients: list<string>, recipients_report: list<string>, dry_run: bool, dry_run_address: string, stale_hours: int, syslog_ignore: list<string>, ignore_messages: list<string>, skip_addon: list<string>, skip_addon_version: list<string>, overrides: array<string, array<string, ?string>>}
      */
     public static function settings(): array
     {
@@ -105,6 +109,8 @@ class rex_project_manager_report_collector
             'ignore_prerelease' => '' !== $get('ignore_prerelease') && '0' !== $get('ignore_prerelease'),
             'recipients' => self::parseList($get('recipients')),
             'recipients_report' => self::parseList($get('recipients_report')),
+            'dry_run' => '' !== $get('dry_run') && '0' !== $get('dry_run'),
+            'dry_run_address' => [] === self::invalidAddresses(self::parseList($get('dry_run_address'))) ? (self::parseList($get('dry_run_address'))[0] ?? '') : '',
             'stale_hours' => 1 === preg_match('/^\d+$/', $get('stale_hours')) && (int) $get('stale_hours') >= 1 ? (int) $get('stale_hours') : self::DEFAULT_STALE_HOURS,
             'syslog_ignore' => self::parseList($get('syslog_ignore')),
             'ignore_messages' => self::parseLines($get('syslog_ignore_messages')),
@@ -195,6 +201,8 @@ class rex_project_manager_report_collector
             'db_label' => '-',
             'violations' => [],
             'behind' => null,
+            'addons' => [],
+            'updates_all' => [],
             'updates' => [],
             'syslog' => [],
             'ignored' => [],
@@ -222,13 +230,10 @@ class rex_project_manager_report_collector
         $project['db'] = null === $db['version'] ? 'unbekannt' : $db['version'] . '-' . $db['engine'];
         $project['db_label'] = null === $db['version'] ? 'DB unbekannt' : $db['engine'] . ' ' . $db['version'];
 
-        $project['violations'] = self::violations($project, $settings);
-        $project['updates'] = self::updates(
-            $data['rex_addons'] ?? [],
-            $settings['skip_addon'] ?? [],
-            $settings['skip_addon_version'] ?? [],
-            (bool) ($settings['ignore_prerelease'] ?? true),
-        );
+        $project['violations'] = self::violationsFor($project, $settings);
+        $project['addons'] = self::installedAddons($data['rex_addons'] ?? []);
+        $project['updates_all'] = self::allUpdates($data['rex_addons'] ?? []);
+        $project['updates'] = self::filterUpdates($project['updates_all'], $project['addons'], $settings);
         ['groups' => $project['syslog'], 'ignored' => $project['ignored']] = self::syslog($data['syslog'] ?? [], $logTime, $syslogIgnore, $ignoreMessages);
 
         return $project;
@@ -275,6 +280,74 @@ class rex_project_manager_report_collector
     }
 
     /**
+     * Rohdaten eines Projekts für den Zustandsspeicher (reported.payload); Befunde werden nie gespeichert.
+     *
+     * @param array<string, mixed> $project Projekt mit Daten (nicht FEHLER)
+     * @return array{cms: string, rex: ?string, php: ?string, db_engine: ?string, db: ?string, addons: array<string, string>, updates: array<string, string>}
+     */
+    public static function payload(array $project): array
+    {
+        return [
+            'cms' => $project['cms'],
+            'rex' => $project['rex'],
+            'php' => $project['php'],
+            'db_engine' => $project['db_engine'],
+            'db' => $project['db_version'],
+            'addons' => $project['addons'],
+            'updates' => $project['updates_all'],
+        ];
+    }
+
+    /**
+     * Projekt-Datensatz aus gespeicherten Rohdaten (ohne Befunde); danach evaluate() aufrufen.
+     *
+     * @param array<string, mixed> $payload siehe payload()
+     * @return array<string, mixed>
+     */
+    public static function fromPayload(string $domain, array $payload): array
+    {
+        $php = rex_project_manager_report_version::php($payload['php'] ?? null);
+
+        return [
+            'domain' => $domain,
+            'state' => 'ok',
+            'last_success' => null,
+            'cms' => (string) ($payload['cms'] ?? ''),
+            'rex' => $payload['rex'] ?? null,
+            'php' => $php['full'] ?? null,
+            'php_line' => $php['line'] ?? null,
+            'php_patch' => $php['patch'] ?? null,
+            'db_engine' => $payload['db_engine'] ?? null,
+            'db_version' => $payload['db'] ?? null,
+            'violations' => [],
+            'behind' => null,
+            'addons' => (array) ($payload['addons'] ?? []),
+            'updates_all' => (array) ($payload['updates'] ?? []),
+            'updates' => [],
+            'syslog' => [],
+            'ignored' => [],
+        ];
+    }
+
+    /**
+     * Mindestversionen und Patch-Rückstand für Projekte neu berechnen (z. B. die Baseline mit der aktuellen Konfiguration).
+     *
+     * @param list<array<string, mixed>> $projects
+     * @param array<string, mixed> $settings
+     * @return list<array<string, mixed>>
+     */
+    public static function evaluate(array $projects, array $settings): array
+    {
+        foreach ($projects as &$project) {
+            $project['violations'] = 'error' === $project['state'] ? [] : self::violationsFor($project, $settings);
+            $project['behind'] = null;
+        }
+        unset($project);
+
+        return self::applyPatchLag($projects, $settings['max_patch_lag'] ?? null);
+    }
+
+    /**
      * Unterschrittene Mindestversionen: PHP und Datenbank nur auf major.minor, REDAXO voll.
      * Minimum je Projekt aus dem Override, sonst global; die Datenbank-Engine wählt min_mariadb oder min_mysql.
      * REDAXO-4-Projekte prüfen min_rex nicht. Unbekannte Datenbankversion ist kein Befund.
@@ -283,7 +356,7 @@ class rex_project_manager_report_collector
      * @param array<string, mixed> $settings
      * @return list<array{key: string, label: string, min: string}>
      */
-    private static function violations(array $project, array $settings): array
+    public static function violationsFor(array $project, array $settings): array
     {
         $override = $settings['overrides'][$project['domain']] ?? [];
         $min = static fn (string $key): ?string => $override[$key] ?? $settings[$key] ?? null;
@@ -309,26 +382,34 @@ class rex_project_manager_report_collector
     }
 
     /**
-     * Nur installierte und aktive Addons. "version_latest" ist beim Client die erste Installer-Datei
-     * und nicht zwingend die höchste Version; gemeldet wird deshalb nur, wenn sie wirklich größer ist.
+     * Installierte Addons mit Version.
      *
-     * @param list<string> $skipAddons Addons, die der Project Manager von der Prüfung ausnimmt (exakter Name)
-     * @param list<string> $skipVersions Teiltexte; enthält "version_latest" einen davon, zählt es nicht als Update
-     * @param bool $ignorePrerelease alpha/beta/rc/dev als "version_latest" nicht melden, solange das Projekt keine Vorabversion einsetzt
-     * @return list<array{name: string, current: string, latest: string}>
+     * @return array<string, string>
      */
-    private static function updates(mixed $addons, array $skipAddons = [], array $skipVersions = [], bool $ignorePrerelease = true): array
+    private static function installedAddons(mixed $addons): array
     {
-        if (!is_array($addons)) {
-            return [];
-        }
-
-        $updates = [];
-        foreach ($addons as $key => $addon) {
-            if (!is_array($addon) || empty($addon['install']) || empty($addon['status'])) {
-                continue;
+        $installed = [];
+        foreach (is_array($addons) ? $addons : [] as $key => $addon) {
+            if (is_array($addon) && !empty($addon['install']) && '' !== (string) ($addon['version_current'] ?? '')) {
+                $installed[(string) ($addon['name'] ?? $key)] = (string) $addon['version_current'];
             }
-            if (in_array((string) ($addon['name'] ?? $key), $skipAddons, true)) {
+        }
+        ksort($installed, SORT_STRING | SORT_FLAG_CASE);
+
+        return $installed;
+    }
+
+    /**
+     * Aktive Addons, bei denen "version_latest" wirklich größer ist als "version_current" (ungefiltert).
+     * "version_latest" ist beim Client die erste Installer-Datei und nicht zwingend die höchste Version.
+     *
+     * @return array<string, string> Addon => Zielversion
+     */
+    private static function allUpdates(mixed $addons): array
+    {
+        $updates = [];
+        foreach (is_array($addons) ? $addons : [] as $key => $addon) {
+            if (!is_array($addon) || empty($addon['install']) || empty($addon['status'])) {
                 continue;
             }
             $current = (string) ($addon['version_current'] ?? '');
@@ -336,13 +417,38 @@ class rex_project_manager_report_collector
             if ('' === $current || '' === $latest || '0' === $latest || version_compare($latest, $current, '<=')) {
                 continue;
             }
-            if (self::matchesAny($latest, $skipVersions)) {
+            $updates[(string) ($addon['name'] ?? $key)] = $latest;
+        }
+        ksort($updates, SORT_STRING | SORT_FLAG_CASE);
+
+        return $updates;
+    }
+
+    /**
+     * Ausschlüsse des Project Managers (Addon exakt, Version als Teiltext) und die Vorabversions-Regel anwenden.
+     *
+     * @param array<string, string> $updatesAll Addon => Zielversion
+     * @param array<string, string> $addons Addon => installierte Version
+     * @param array<string, mixed> $settings
+     * @return list<array{name: string, current: string, latest: string}>
+     */
+    public static function filterUpdates(array $updatesAll, array $addons, array $settings): array
+    {
+        $skipAddons = $settings['skip_addon'] ?? [];
+        $skipVersions = $settings['skip_addon_version'] ?? [];
+        $ignorePrerelease = (bool) ($settings['ignore_prerelease'] ?? true);
+
+        $updates = [];
+        foreach ($updatesAll as $name => $latest) {
+            $name = (string) $name;
+            $current = $addons[$name] ?? '';
+            if (in_array($name, $skipAddons, true) || self::matchesAny($latest, $skipVersions)) {
                 continue;
             }
             if ($ignorePrerelease && 1 === preg_match(self::PRERELEASE, $latest) && 1 !== preg_match(self::PRERELEASE, $current)) {
                 continue;
             }
-            $updates[] = ['name' => (string) ($addon['name'] ?? $key), 'current' => $current, 'latest' => $latest];
+            $updates[] = ['name' => $name, 'current' => $current, 'latest' => $latest];
         }
 
         usort($updates, static fn (array $a, array $b) => strcasecmp($a['name'], $b['name']));
@@ -409,7 +515,7 @@ class rex_project_manager_report_collector
     }
 
     /** @param list<string> $needles */
-    private static function matchesAny(string $haystack, array $needles): bool
+    public static function matchesAny(string $haystack, array $needles): bool
     {
         foreach ($needles as $needle) {
             if ('' !== $needle && false !== stripos($haystack, $needle)) {

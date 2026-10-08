@@ -12,6 +12,7 @@
 $lib = dirname(__DIR__) . '/lib/';
 require_once $lib . 'report_version.php';
 require_once $lib . 'report_collector.php';
+require_once $lib . 'report_delta.php';
 require_once $lib . 'report_builder.php';
 
 date_default_timezone_set('Europe/Berlin');
@@ -192,8 +193,8 @@ $check('Inventar: below_min und behind', in_array('p02.example | 5.20.5 | 8.3.31
     && in_array('p01.example | 5.20.1 | 7.4.33 | unbekannt | addon_updates= | syslog=0 | below_min=php,rex | behind= | status=ok | last_ok=2026-10-08 00:00', $lines, true)
     && in_array('gesund-1.de | 5.21.4 | 8.4.26 | 10.11.14-MariaDB | addon_updates= | syslog=0 | below_min= | behind= | status=ok | last_ok=2026-10-08 00:00', $lines, true));
 // keine Detail-Bloecke: nur Kopf (2 Zeilen), Leerzeile, Inventar (Ueberschrift + Projekte); spart Tokens
-$check('Data-Mail ohne Detail-Texte', !str_contains($body, '==') && !str_contains($body, 'Syslog 24h') && !str_contains($body, 'Mindestversion:') && !str_contains($body, 'Rückstand:') && !str_contains($body, 'FEHLER:') && !str_contains($body, 'VERALTET:') && !str_contains($body, 'DB-Version unbekannt'));
-$check('Data-Mail: Kopf (2) + Leerzeile + Ueberschrift + 20 Projekte = 24 Zeilen', 24 === substr_count($body, "\n"));
+$check('Data-Mail ohne Detail-Texte', !str_contains($body, '==') && !str_contains($body, 'Syslog 24h') && !str_contains($body, 'Mindestversion:') && !str_contains($body, 'Rückstand:') && !str_contains($body, 'VERALTET:') && !str_contains($body, 'DB-Version unbekannt'));
+$check('Data-Mail: Kopf (2), Aggregatzeile, Inventar (Ueberschrift + 20 Projekte), zwei Leerzeilen = 26 Zeilen', 26 === substr_count($body, "\n") && 'ADDON-UPDATES AGGREGIERT: keine' === $lines[3]);
 
 // SYSLOG_IGNORIERT summiert unterdrueckte Eintraege
 $sys = [
@@ -230,6 +231,162 @@ $check('Bericht: DB unbekannt', str_contains($report['text'], 'DB unbekannt'));
 $check('Bericht: Rueckstandszeile', str_contains($report['text'], 'Rückstand: PHP 8.4.12 < 8.4.26 (14 Patches), Flottenmaximum der PHP-Linie 8.4'));
 $check('Bericht: Betreff', 1 === preg_match('/^\[Projekt Manager - Report\] \d{4}-\d{2}-\d{2} \| \d+ mit Befund \| 0 Fehler \| 0 Addon-Updates$/', $report['subject']));
 $check('Data-Betreff', 1 === preg_match('/^\[Projekt Manager - Data\] \d{4}-\d{2}-\d{2} \| 20 Projekte \| \d+ mit Befund \| 0 Fehler$/', $machine['subject']));
+
+
+// ---------------------------------------------------------------- Delta (Baseline -> heute)
+$D = 'rex_project_manager_report_delta';
+$then = new DateTimeImmutable('2026-10-07 06:30:00');
+$day2 = new DateTimeImmutable('2026-10-08 06:30:00');
+$cfg = ['min_rex' => '5.21.2', 'min_php' => '8.3', 'min_mariadb' => '10.11', 'min_mysql' => '8.4', 'max_patch_lag' => 3, 'ignore_prerelease' => true, 'skip_addon' => [], 'skip_addon_version' => [], 'overrides' => []];
+$addonRows = static function (array $addons): array {
+    $rows = [];
+    foreach ($addons as $name => $v) {
+        $rows[$name] = ['name' => $name, 'install' => true, 'status' => true, 'version_current' => $v[0], 'version_latest' => $v[1] ?? $v[0]];
+    }
+
+    return $rows;
+};
+/** Projekt aus Rohdaten; $o: status, cms, addons [name => [aktuell, neueste?]], sys, createdate */
+$mk = static function (string $domain, string $php, string $rex, string $db, array $o = []) use ($C, $now, $ignore, $cfg, $addonRows): array {
+    $status = $o['status'] ?? '1';
+    $raw = '1' === $status ? json_encode(['rex_version' => $rex, 'php_version' => $php, 'mysql_version' => $db, 'rex_addons' => $addonRows($o['addons'] ?? []), 'syslog' => $o['sys'] ?? []]) : null;
+
+    return $C::analyse(['domain' => $domain, 'cms' => $o['cms'] ?? '5', 'status' => $status, 'createdate' => array_key_exists('createdate', $o) ? $o['createdate'] : '2026-10-08 00:00:12', 'raw' => $raw], $now, 30, $ignore, [], $cfg);
+};
+/** gespeicherte Zeilen wie sie loadReported() liefert (Payload als JSON gespeichert und wieder gelesen) */
+$stored = static function (array $projects, DateTimeImmutable $at) use ($D): array {
+    return array_map(static function (array $row): array {
+        return ['domain' => $row['domain'], 'status' => $row['status'], 'payload' => '' === $row['payload'] ? null : json_decode($row['payload'], true), 'reported_at' => $row['reported_at']];
+    }, $D::snapshot('data', $projects, $at));
+};
+$ev = static function (array $delta, string $type): array {
+    foreach ($delta['events'] as $event) {
+        if ($event['type'] === $type) {
+            return array_column($event['items'], 'text');
+        }
+    }
+
+    return [];
+};
+$ok = '10.11.14-MariaDB';
+$base = static fn (array $ps) => $stored($ps, $then);
+$ctx = ['settings' => $cfg];
+
+// 1 Basislauf: keine Vergleichsdaten
+$d = $D::compute([$mk('a.de', '8.4.26', '5.21.4', $ok)], [], $ctx);
+$check('Delta 1: Basislauf', 'base' === $d['mode'] && ['ÄNDERUNGEN: Basislauf, keine Vergleichsdaten'] === $D::lines($d));
+// 2 gleicher Stand: kein Delta (zweiter Lauf am selben Tag)
+$ps = [$mk('a.de', '8.4.26', '5.21.4', $ok), $mk('b.de', '8.4.26', '5.21.4', $ok, ['status' => '0', 'createdate' => null])];
+$d = $D::compute($ps, $base($ps), $ctx);
+$check('Delta 2: gleicher Stand = keine Aenderungen', 'delta' === $d['mode'] && [] === $d['events'] && ['ÄNDERUNGEN: keine'] === $D::lines($d));
+// 3 Ausfall und Wiederkehr
+$d = $D::compute([$mk('a.de', '8.4.26', '5.21.4', $ok, ['status' => '0']), $mk('b.de', '8.4.26', '5.21.4', $ok)], $base([$mk('a.de', '8.4.26', '5.21.4', $ok), $mk('b.de', '8.4.26', '5.21.4', $ok, ['status' => '0'])]), $ctx);
+$check('Delta 3: STATUS ausgefallen und wieder erreichbar', ['a.de NEU AUSGEFALLEN', 'b.de WIEDER ERREICHBAR'] === $ev($d, 'STATUS') && 'STATUS: a.de NEU AUSGEFALLEN, b.de WIEDER ERREICHBAR' === $D::lines($d)[1] && 'ÄNDERUNGEN seit 2026-10-07' === $D::lines($d)[0]);
+$check('Delta 3: ausgefallenes Projekt erzeugt keine weiteren Ereignisse', [] === $ev($d, 'KERN') && [] === $ev($d, 'BEFUND NEU'));
+// 4 Kern
+$d = $D::compute([$mk('a.de', '8.4.26', '5.21.4', '10.11.18-MariaDB')], $base([$mk('a.de', '8.4.24', '5.21.2', $ok)]), $ctx);
+$check('Delta 4: KERN rex, php, db', ['a.de rex 5.21.2 -> 5.21.4', 'a.de php 8.4.24 -> 8.4.26', 'a.de db 10.11.14-MariaDB -> 10.11.18-MariaDB'] === $ev($d, 'KERN') && 'KERN: a.de rex 5.21.2 -> 5.21.4, a.de php 8.4.24 -> 8.4.26, a.de db 10.11.14-MariaDB -> 10.11.18-MariaDB' === $D::lines($d)[1]);
+// 5 Addon angewendet / neu / entfernt
+$d = $D::compute([$mk('a.de', '8.4.26', '5.21.4', $ok, ['addons' => ['mform' => ['10.0.2'], 'cke5' => ['7.8.0'], 'yform' => ['5.0.2']]])], $base([$mk('a.de', '8.4.26', '5.21.4', $ok, ['addons' => ['mform' => ['9.4.1'], 'old' => ['1.0'], 'yform' => ['5.0.2']]])]), $ctx);
+$check('Delta 5: ADDON ANGEWENDET (Version, neu, entfernt)', ['a.de cke5 neu installiert 7.8.0', 'a.de mform 9.4.1 -> 10.0.2', 'a.de old entfernt'] === $ev($d, 'ADDON ANGEWENDET'));
+// 6 Update neu: aggregiert, Domains erst unter 5 Projekten
+$now35 = []; $then35 = [];
+for ($i = 1; $i <= 35; ++$i) {
+    $n = sprintf('p%02d.example', $i);
+    $then35[] = $mk($n, '8.4.26', '5.21.4', $ok, ['addons' => ['cke5' => ['7.7.0'], 'mform' => ['9.4.1']]]);
+    $now35[] = $mk($n, '8.4.26', '5.21.4', $ok, ['addons' => ['cke5' => ['7.7.0', '7.8.0'], 'mform' => ['9.4.1', $i <= 3 ? '10.0.2' : '9.4.1']]]);
+}
+$d = $D::compute($now35, $base($then35), $ctx);
+$upd = $ev($d, 'UPDATE NEU');
+$check('Delta 6: UPDATE NEU aggregiert (35 Projekte ohne Domains, 3 mit Domains)', ['cke5 7.8.0 bei 35 Projekten', 'mform 10.0.2 bei 3 Projekten (p01.example, p02.example, p03.example)'] === $upd);
+$check('Delta 6: UPDATE NEU Zeile mit Trenner', 'UPDATE NEU: cke5 7.8.0 bei 35 Projekten | mform 10.0.2 bei 3 Projekten (p01.example, p02.example, p03.example)' === $D::lines($d)[1]);
+$d1 = $D::compute([$mk('z.de', '8.4.26', '5.21.4', $ok, ['addons' => ['mform' => ['9.4.1', '10.0.2']]])], $base([$mk('z.de', '8.4.26', '5.21.4', $ok, ['addons' => ['mform' => ['9.4.1']]])]), $ctx);
+$check('Delta 6: ein Projekt "bei 1 Projekt"', ['mform 10.0.2 bei 1 Projekt (z.de)'] === $ev($d1, 'UPDATE NEU'));
+// 7 Update unveraendert = kein Ereignis, geaendertes Ziel = Ereignis, Ausschluss und Vorabversion greifen
+$was = [$mk('z.de', '8.4.26', '5.21.4', $ok, ['addons' => ['mform' => ['9.4.1', '10.0.2']]])];
+$check('Delta 7: gleiches Update bleibt ohne Ereignis', [] === $ev($D::compute($was, $base($was), $ctx), 'UPDATE NEU'));
+$newer = [$mk('z.de', '8.4.26', '5.21.4', $ok, ['addons' => ['mform' => ['9.4.1', '10.1.0']]])];
+$check('Delta 7: neues Ziel meldet erneut', ['mform 10.1.0 bei 1 Projekt (z.de)'] === $ev($D::compute($newer, $base($was), $ctx), 'UPDATE NEU'));
+$beta = [$mk('z.de', '8.4.26', '5.21.4', $ok, ['addons' => ['mform' => ['9.4.1', '10.2.0-beta1']]])];
+$check('Delta 7: Vorabversion wird ignoriert', [] === $ev($D::compute($beta, $base($was), $ctx), 'UPDATE NEU'));
+$skip = $cfg; $skip['skip_addon'] = ['mform'];
+$check('Delta 7: ausgeschlossenes Addon wird ignoriert', [] === $ev($D::compute($newer, $base($was), ['settings' => $skip]), 'UPDATE NEU'));
+// 8 Befund neu / behoben
+$d = $D::compute([$mk('a.de', '8.2.34', '5.21.4', $ok), $mk('b.de', '8.4.26', '5.21.4', $ok)], $base([$mk('a.de', '8.4.26', '5.21.4', $ok), $mk('b.de', '8.1.0', '5.21.4', $ok)]), $ctx);
+$check('Delta 8: BEFUND NEU und BEHOBEN', ['a.de below_min php'] === $ev($d, 'BEFUND NEU') && ['b.de below_min php'] === $ev($d, 'BEFUND BEHOBEN'));
+$check('Delta 8: ohne Regelaenderung keine Kennzeichnung', !str_contains(implode("\n", $D::lines($d)), 'Regeländerung'));
+// 9 Rueckstand (Flotte) neu
+$fleetNow = $C::applyPatchLag([$mk('a.de', '8.4.12', '5.21.4', $ok), $mk('b.de', '8.4.26', '5.21.4', $ok)], 3);
+$fleetThen = $C::applyPatchLag([$mk('a.de', '8.4.25', '5.21.4', $ok), $mk('b.de', '8.4.26', '5.21.4', $ok)], 3);
+$d = $D::compute($fleetNow, $base($fleetThen), $ctx);
+$check('Delta 9: behind neu', ['a.de behind php 8.4.12<8.4.26'] === $ev($d, 'BEFUND NEU') && in_array('BEFUND NEU: a.de behind php 8.4.12<8.4.26', $D::lines($d), true));
+// 10 Regelaenderung: kein Scheindelta, echtes Delta wird gekennzeichnet
+$stricter = $cfg; $stricter['min_php'] = '8.4';
+$same = [$mk('a.de', '8.3.5', '5.21.4', $ok)];
+$d = $D::compute($same, $base($same), ['settings' => $stricter, 'rules_changed' => true]);
+$check('Delta 10: Regelaenderung allein erzeugt kein Scheindelta', [] === $d['events'] && 'ÄNDERUNGEN: keine' === $D::lines($d)[0]);
+$d = $D::compute([$mk('a.de', '8.4.2', '5.21.4', $ok)], $base($same), ['settings' => $stricter, 'rules_changed' => true]);
+$check('Delta 10: echtes Delta mit (Regeländerung) gekennzeichnet', ['a.de below_min php'] === $ev($d, 'BEFUND BEHOBEN') && in_array('BEFUND BEHOBEN: a.de below_min php (Regeländerung)', $D::lines($d), true));
+$check('Delta 10: Fingerabdruck aendert sich bei Regeln, nicht bei Syslog-Filtern', $D::rulesFingerprint($cfg) !== $D::rulesFingerprint($stricter) && $D::rulesFingerprint($cfg) === $D::rulesFingerprint(array_merge($cfg, ['syslog_ignore' => ['x'], 'stale_hours' => 99])) && $D::rulesFingerprint($cfg) !== $D::rulesFingerprint(array_merge($cfg, ['overrides' => ['a.de' => ['min_php' => '0.0']]])));
+// 11 Syslog neu: Merge ueber zwei Tage, Ausnahmeliste, nur seit Baseline
+$g = static fn (string $m, string $f = 'a.php', string $l = '72', int $n = 1): array => ['type' => 'Warning', 'message' => $m, 'file' => $f, 'line' => $l, 'count' => $n];
+$withSys = static fn (array $groups): array => array_merge($mk('a.de', '8.4.26', '5.21.4', $ok), ['syslog' => $groups]);
+$m1 = $D::mergeSeen([], [$withSys([$g('alt')])], $then);
+$m2 = $D::mergeSeen($m1['seen'], [$withSys([$g('alt', 'a.php', '72', 5), $g('neu'), $g('Undefined variable $params', 'x.php', '1')])], $day2);
+$new = $D::newSyslog($m2['seen'], '2026-10-07 06:30:00', ['Info'], ['undefined variable $params']);
+$check('Delta 11: nur neue Hashes seit der Baseline, nach Ausnahmeliste', ['neu'] === array_column($new, 'msg'));
+$check('Delta 11: bekannter Eintrag behaelt first_seen, aktualisiert count und last_seen', '2026-10-07 06:30:00' === $m2['seen']['a.de|' . $D::hash($g('alt'))]['first_seen'] && 5 === $m2['seen']['a.de|' . $D::hash($g('alt'))]['count'] && '2026-10-08 06:30:00' === $m2['seen']['a.de|' . $D::hash($g('alt'))]['last_seen']);
+$check('Delta 11: ohne Baseline keine neuen Syslog-Eintraege', [] === $D::newSyslog($m2['seen'], null, [], []));
+$d = $D::compute([$withSys([$g('neu')])], $base([$mk('a.de', '8.4.26', '5.21.4', $ok)]), ['settings' => $cfg, 'syslog_new' => $new]);
+$check('Delta 11: SYSLOG NEU im Ereignis', ['a.de Warning "neu" (a.php:72) x1'] === $ev($d, 'SYSLOG NEU') && 'SYSLOG NEU: a.de Warning "neu" (a.php:72) x1' === $D::lines($d)[1]);
+$check('Delta 11: Hash aus Meldung|Datei|Zeile', sha1('neu|a.php|72') === $D::hash($g('neu')));
+// 12 Projekte neu und entfernt, neue Projekte ohne weitere Ereignisse
+$d = $D::compute([$mk('a.de', '8.4.26', '5.21.4', $ok), $mk('neu.de', '7.4.33', '5.14.3', $ok)], $base([$mk('a.de', '8.4.26', '5.21.4', $ok), $mk('alt.de', '8.4.26', '5.21.4', $ok)]), $ctx);
+$check('Delta 12: PROJEKTE + neu | - alt, neues Projekt ohne Befundzeile', 'PROJEKTE: + neu.de | - alt.de' === $D::lines($d)[1] && [] === $ev($d, 'BEFUND NEU'));
+// 13 Kappung auf 10 Eintraege
+$many = []; $manyThen = [];
+for ($i = 1; $i <= 12; ++$i) {
+    $manyThen[] = $mk(sprintf('k%02d.de', $i), '8.4.26', '5.21.2', $ok);
+    $many[] = $mk(sprintf('k%02d.de', $i), '8.4.26', '5.21.4', $ok);
+}
+$line = $D::lines($D::compute($many, $base($manyThen), $ctx))[1];
+$check('Delta 13: mehr als 10 Eintraege => +N weitere', str_ends_with($line, ', +2 weitere') && 10 === substr_count($line, ' rex 5.21.2 -> 5.21.4'));
+// 14 Fehlerdauer
+$st = $D::nextState($mk('e.de', '8.4.26', '5.21.4', $ok, ['status' => '0', 'createdate' => '2026-10-01 00:00:12']), null, $day2);
+$check('Fehlerdauer: neue Serie beginnt am letzten Erfolg', '2026-10-01 00:00:12' === $st['first_failed_at'] && 'seit 7 Tagen (letzter Erfolg 2026-10-01)' === $D::errorText($st, $day2));
+$st = $D::nextState($mk('e.de', '8.4.26', '5.21.4', $ok, ['status' => '0', 'createdate' => '2026-10-01 00:00:12']), ['first_failed_at' => '2024-06-20 00:00:00', 'last_success_at' => '2024-06-20 00:00:00'], $day2);
+$check('Fehlerdauer: laufende Serie behaelt Beginn', '2024-06-20 00:00:00' === $st['first_failed_at']);
+$never = $D::nextState($mk('n.de', '', '', '', ['status' => '0', 'createdate' => null]), null, $day2);
+$check('Fehlerdauer: nie erfolgreich', null === $never['last_success_at'] && 'seit Beginn des Monitorings (nie erfolgreich)' === $D::errorText($never, $day2) && '2026-10-08 06:30:00' === $never['first_failed_at']);
+$check('Fehlerdauer: Erfolg beendet die Serie', null === $D::nextState($mk('a.de', '8.4.26', '5.21.4', $ok), ['first_failed_at' => '2026-10-01 00:00:00', 'last_success_at' => '2026-09-30 00:00:00'], $day2)['first_failed_at']);
+$check('Fehlerdauer: 842 Tage', 'seit 842 Tagen (letzter Erfolg 2024-06-20)' === $D::errorText(['first_failed_at' => '2024-06-20 00:00:00', 'last_success_at' => '2024-06-20 00:00:00'], new DateTimeImmutable('2026-10-10 00:00:00')));
+
+// 15 Data-Mail mit Delta, Fehlerdauer, Pause und Aggregat
+$pe = $mk('err.de', '8.4.26', '5.21.4', $ok, ['status' => '0', 'createdate' => '2026-10-01 00:00:12']);
+$pe['error_text'] = 'seit 7 Tagen (letzter Erfolg 2026-10-01)';
+$pp = array_merge($mk('pause.de', '7.4.33', '5.14.3', $ok, ['status' => '0', 'createdate' => null]), ['paused' => true, 'pause_reason' => 'Relaunch']);
+$pu = $mk('upd.de', '8.4.26', '5.21.4', $ok, ['addons' => ['mform' => ['9.4.1', '10.0.2'], 'cke5' => ['7.7.0', '7.8.0']]]);
+$pu2 = $mk('upd2.de', '8.4.26', '5.21.4', $ok, ['addons' => ['mform' => ['9.4.1', '10.0.2']]]);
+$delta = $D::compute([$pe, $pp, $pu, $pu2], $base([$mk('err.de', '8.4.26', '5.21.4', $ok), $mk('pause.de', '8.4.26', '5.21.4', $ok), $mk('upd.de', '8.4.26', '5.21.4', $ok), $mk('upd2.de', '8.4.26', '5.21.4', $ok)]), $ctx);
+$mail = $B::buildMachine([$pe, $pp, $pu, $pu2], $day2, $delta);
+$ml = explode("\n", $mail['body']);
+$check('Data-Mail: Kopf unveraendert, Pausiert nur bei N > 0', str_starts_with($ml[0], 'Lauf: 2026-10-08 06:30 | Abgefragt: 4 | OK: 2 | Fehler: 1 | Mit Befund: 1 | Ältester Abruf: ') && str_ends_with($ml[0], ' | Pausiert: 1') && 'SYSLOG_IGNORIERT: 0' === $ml[1]);
+$check('Data-Mail: Reihenfolge der Abschnitte', 'ÄNDERUNGEN seit 2026-10-07' === $ml[3] && 'STATUS: err.de NEU AUSGEFALLEN' === $ml[4]);
+$check('Data-Mail: FEHLER-, PAUSIERT- und Aggregatzeile', in_array('FEHLER: err.de seit 7 Tagen (letzter Erfolg 2026-10-01)', $ml, true) && in_array('PAUSIERT: pause.de (Relaunch)', $ml, true) && in_array('ADDON-UPDATES AGGREGIERT: mform 10.0.2 x2 | cke5 7.8.0 x1', $ml, true));
+$check('Data-Mail: pausiertes Projekt ohne Ereignis, ohne FEHLER-Zeile, status=paused', !str_contains(implode("\n", $D::lines($delta)), 'pause.de') && !str_contains($mail['body'], 'FEHLER: pause.de') && str_contains($mail['body'], 'pause.de | - | - | - | addon_updates=- | syslog=- | below_min=- | behind=- | status=paused | last_ok=-'));
+$check('Data-Mail: Betreff zaehlt pausiertes Projekt nicht als Fehler', str_contains($mail['subject'], '| 1 mit Befund | 1 Fehler'));
+$check('Data-Mail: Inventar bleibt am Ende, Ueberschrift unveraendert', str_contains($mail['body'], "\n\n# domain | rex | php | db | addon_updates | syslog | below_min | behind | status | last_ok\n") && str_ends_with(rtrim($mail['body'], "\n"), 'status=ok | last_ok=2026-10-08 00:00'));
+$agg = [];
+for ($i = 1; $i <= 17; ++$i) {
+    $agg[] = $mk(sprintf('q%02d.de', $i), '8.4.26', '5.21.4', $ok, ['addons' => [sprintf('addon%02d', $i) => ['1.0', '2.0']]]);
+}
+$check('Aggregatzeile: hoechstens 15 Eintraege + weitere', str_contains($B::buildMachine($agg, $day2)['body'], ' | +2 weitere') && 15 === substr_count($B::buildMachine($agg, $day2)['body'], ' x1'));
+// Bericht mit Delta (Text)
+$rep = $B::buildReport([$pe, $pp, $pu, $pu2], $day2, false, $delta);
+$check('Bericht-Text: Aenderungen, Fehlerdauer, Pause', str_contains($rep['text'], "ÄNDERUNGEN SEIT 2026-10-07\n  STATUS: err.de NEU AUSGEFALLEN") && str_contains($rep['text'], 'FEHLER seit 7 Tagen (letzter Erfolg 2026-10-01)') && str_contains($rep['text'], "PAUSIERT (kein Befund)\npause.de: Relaunch") && str_contains($rep['text'], '1 pausiert'));
+$repBase = $B::buildReport([$pu], $day2, false, $D::compute([$pu], [], $ctx));
+$check('Bericht-Text: Basislauf', str_contains($repBase['text'], "ÄNDERUNGEN\nBasislauf, keine Vergleichsdaten."));
+$check('Delta-Zeilen fuer Report: Ereignis, Projekt, Aenderung', [['STATUS', 'err.de', 'NEU AUSGEFALLEN']] === array_slice($D::rows($delta), 0, 1));
 
 echo $failed, ' von ', $total, " Pruefungen fehlgeschlagen\n";
 exit($failed > 0 ? 1 : 0);

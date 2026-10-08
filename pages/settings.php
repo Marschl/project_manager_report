@@ -33,6 +33,16 @@ if (rex_post('save', 'bool')) {
             }
         }
 
+        // Testversand: nur an die Testadresse, nichts wird gespeichert; ohne gültige Adresse nicht aktivierbar
+        $new['dry_run_address'] = trim((string) ($input['dry_run_address'] ?? ''));
+        $new['dry_run'] = '1' === (string) ($input['dry_run'] ?? '') ? '1' : '0';
+        $invalidTest = $collector::invalidAddresses($collector::parseList($new['dry_run_address']));
+        if ([] !== $invalidTest || count($collector::parseList($new['dry_run_address'])) > 1) {
+            $errors[] = $this->i18n('invalid_address', $this->i18n('dry_run_address'), implode(', ', $invalidTest ?: [$new['dry_run_address']]));
+        } elseif ('1' === $new['dry_run'] && '' === $new['dry_run_address']) {
+            $errors[] = $this->i18n('dry_run_needs_address');
+        }
+
         $new['stale_hours'] = trim((string) ($input['stale_hours'] ?? ''));
         if ('' !== $new['stale_hours'] && (1 !== preg_match('/^\d+$/', $new['stale_hours']) || (int) $new['stale_hours'] < 1)) {
             $errors[] = $this->i18n('invalid_hours', $this->i18n('stale_hours'));
@@ -89,7 +99,16 @@ $group = static function (string $title, string $intro, array $elements): string
 $content = $group($this->i18n('group_mail'), $this->i18n('group_mail_intro'), [
     $text('recipients', $values['recipients'], $this->i18n('recipients'), $this->i18n('recipients_note'), true),
     $text('recipients_report', $values['recipients_report'], $this->i18n('recipients_report'), $this->i18n('recipients_report_note'), true),
+    $text('dry_run_address', $values['dry_run_address'], $this->i18n('dry_run_address'), $this->i18n('dry_run_address_note')),
 ]);
+
+$dryRun = new rex_fragment();
+$dryRun->setVar('elements', [[
+    'label' => '<label for="pmr-dry_run">' . rex_escape($this->i18n('dry_run')) . '</label>',
+    'field' => '<input type="checkbox" id="pmr-dry_run" name="config[dry_run]" value="1"' . ('0' !== $values['dry_run'] && '' !== $values['dry_run'] ? ' checked' : '') . '>',
+    'note' => rex_escape($this->i18n('dry_run_note')),
+]], false);
+$content .= $dryRun->parse('core/form/checkbox.php');
 
 // Auswertung
 $content .= $group($this->i18n('group_evaluation'), $this->i18n('group_evaluation_intro'), [

@@ -1,5 +1,15 @@
 # Changelog
 
+## Version 1.4.0 // 08.10.2026
+
+* **Delta gegenüber dem letzten Versand:** beide Mails nennen die Änderungen seit dem zuletzt erfolgreich versendeten Stand (je Mailtyp). Gespeichert werden nur Rohdaten, Befunde werden mit der aktuellen Konfiguration neu berechnet (keine Scheindeltas bei geänderten Mindestversionen, `(Regeländerung)` bei echten Änderungen nach einer Regeländerung). Neue Tabellen `rex_project_manager_report_reported`, `_state` und `_syslog_seen` (Addon nach dem Update neu installieren)
+* Ereignisse: `STATUS`, `KERN`, `ADDON ANGEWENDET`, `UPDATE NEU` (aggregiert je Addon und Zielversion), `BEFUND NEU`/`BEHOBEN`, `SYSLOG NEU`, `PROJEKTE`; erster Lauf: `ÄNDERUNGEN: Basislauf, keine Vergleichsdaten`
+* **Data-Mail:** neuer Abschnitt `ÄNDERUNGEN`, Zeilen `FEHLER: domain seit N Tagen (letzter Erfolg …)`, `PAUSIERT: …` und `ADDON-UPDATES AGGREGIERT: …`; Betreff, Kopfzeile, Inventarkopf und Inventarspalten bleiben (`status` kennt zusätzlich `paused`, Kopfzeile bei Pausen mit `| Pausiert: N`). Es gibt weiterhin keine Detail-Blöcke je Projekt
+* **Bericht:** Block „Änderungen seit …“ als Tabelle, Fehlerdauer, Abschnitt „Pausiert“; kürzere Inline-Styles und eine Zeile je Projekt bei den Addon-Updates (54 Projekte: 177 KB auf rund 80 KB, Gmail kürzt ab etwa 102 KB)
+* **Pause:** je Projekt „Monitoring pausiert“ mit Grund (Backend: Projekte); pausierte Projekte zählen nicht als Fehler oder Befund und erzeugen keine Änderungen
+* **Testlauf:** Einstellungen `dry_run` und Testadresse; Konsolenbefehl `project_manager_report:send` (`--dry-run`, `--to`, `--no-advance-baseline`); `project_manager_report:preview` zeigt das Delta und schreibt nichts (die Optionen `--stale-hours`, `--syslog-ignore` und `--ignore-message` entfallen, es gelten die Einstellungen)
+* `state` und gesehene Syslog-Einträge werden bei jedem Lauf fortgeschrieben, auch wenn der Versand scheitert; der gemeldete Stand nur nach erfolgreichem Versand. Syslog-Einträge, die 90 Tage nicht gesehen wurden, werden gelöscht
+
 ## Version 1.3.0 // 08.10.2026
 
 * **Eigene Einstellungen** (Backend: Projekt Manager Report → Einstellungen): Mindestversionen für REDAXO, PHP, MariaDB und MySQL als freie Texteingabe (`x.y` oder `x.y.z`, leer = Regel aus), erlaubter PHP-Patch-Rückstand, Vorabversionen bei Addon-Updates ignorieren. Die Mindestwerte des Project Managers (`php_min`, `cms_min`, `cms_4_min`) werden nicht mehr gelesen
