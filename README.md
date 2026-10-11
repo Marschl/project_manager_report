@@ -1,13 +1,8 @@
 # Project Manager Report
 
-Verschickt täglich **zwei Mails** aus den Daten, die das Addon `project_manager` (Plugin `server`) in der Tabelle `rex_project_manager_logs` gesammelt hat:
+Täglicher Statusbericht für den Project Manager: zwei Mails (maschinenlesbar und HTML) mit den Änderungen seit dem letzten Versand. Das Addon liest nur die Datenbank des Project Managers, es gibt keine zusätzlichen externen Aufrufe.
 
-- **Kompakte Mail** (Plain-Text, streng strukturiert, wenige Tokens) zur automatischen Auswertung, z. B. durch einen KI-Agenten.
-- **Bericht** (HTML mit Text-Alternative) für Menschen: Zusammenfassung, Handlungsbedarf, Addon-Updates, Syslog ohne Befund, Tabelle aller Projekte.
-
-Beide Mails nennen **Änderungen seit dem letzten Versand** (Delta), damit ein automatischer Check nur das Neue sieht und nicht täglich dieselben Befunde.
-
-Das Addon liest nur die Datenbank des Project Managers: keine Änderung am Abruf, keine zusätzlichen externen Aufrufe.
+*Feedback ist willkommen, bitte als Issue auf GitHub.*
 
 ## Einrichtung
 
@@ -206,3 +201,7 @@ Abschnitte: Zusammenfassung („unter Mindestversion“ und „im Rückstand“ 
 - Gmail kürzt HTML ab etwa 102 KB; der Bericht bleibt mit kurzen Inline-Styles und einer Zeile je Projekt bei den Updates darunter (54 Projekte: rund 80 KB).
 - Das Prüfskript `tests/run.php` (ohne REDAXO, ohne Abhängigkeiten) prüft Normalisierung, Mindestversionen, Rückstand und Mailformat: `php redaxo/src/addons/project_manager_report/tests/run.php`.
 - Im Umleitungsmodus (Detour) des Addons `phpmailer` ändert dieses den Betreff; das feste Betreffformat gilt nur ohne Detour.
+
+## Lizenz
+
+MIT, siehe [LICENSE](LICENSE).
