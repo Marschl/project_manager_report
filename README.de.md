@@ -26,19 +26,21 @@ Der Versand erfolgt mit `rex_mailer` (Addon `phpmailer`). Schlägt er fehl, steh
 
 Der **erste Lauf** ist ein Basislauf (`ÄNDERUNGEN: Basislauf, keine Vergleichsdaten`); ab dem zweiten Lauf stehen die Änderungen seit dem letzten erfolgreichen Versand in den Mails.
 
+Die Befehle laufen im Hauptordner der REDAXO-Installation (dort liegt `redaxo/bin/console`); in einer DDEV-Umgebung `ddev exec` voranstellen.
+
 Vorschau (liest nur, sendet und speichert nichts; zeigt auch das Delta gegen den zuletzt gemeldeten Stand):
 
 ```bash
-ddev exec php redaxo/bin/console project_manager_report:preview                       # kompakte Mail
-ddev exec php redaxo/bin/console project_manager_report:preview --format=report-text  # Bericht als Text
-ddev exec php redaxo/bin/console project_manager_report:preview --format=report-html  # Bericht als HTML
+php redaxo/bin/console project_manager_report:preview                       # kompakte Mail
+php redaxo/bin/console project_manager_report:preview --format=report-text  # Bericht als Text
+php redaxo/bin/console project_manager_report:preview --format=report-html  # Bericht als HTML
 ```
 
 Manueller Versand wie im Cronjob:
 
 ```bash
-ddev exec php redaxo/bin/console project_manager_report:send --dry-run --to=test@example.org   # Testlauf, speichert nichts
-ddev exec php redaxo/bin/console project_manager_report:send --no-advance-baseline            # echter Versand, Stand bleibt
+php redaxo/bin/console project_manager_report:send --dry-run --to=test@example.org   # Testlauf, speichert nichts
+php redaxo/bin/console project_manager_report:send --no-advance-baseline            # echter Versand, Stand bleibt
 ```
 
 Der Cronjob (auch „Ausführen“ im Backend) rückt den gemeldeten Stand immer vor. `--to` ersetzt die Empfänger und rückt den Stand ebenfalls nicht vor; `--dry-run` sendet nur an die Testadresse (`--to` oder Einstellung) und schreibt nichts.
@@ -201,7 +203,7 @@ Abschnitte: Zusammenfassung („unter Mindestversion“ und „im Rückstand“ 
 - Der Client des Project Managers übergibt als `version_latest` die **erste** Installer-Datei, nicht die höchste Version. Falsche „Updates“ filtert der Versionsvergleich, aber ein vorhandenes Update kann fehlen.
 - Der Project Manager hält nur den **letzten** Abruf je Projekt; den Verlauf bildet das Addon selbst über die eigenen Zustandstabellen ab (ab dem ersten Lauf, ohne Rückwirkung).
 - Gmail kürzt HTML ab etwa 102 KB; der Bericht bleibt mit kurzen Inline-Styles und einer Zeile je Projekt bei den Updates darunter (54 Projekte: rund 80 KB).
-- Das Prüfskript `tests/run.php` (ohne REDAXO, ohne Abhängigkeiten) prüft Normalisierung, Mindestversionen, Rückstand und Mailformat: `php redaxo/src/addons/project_manager_report/tests/run.php`.
+- Das Prüfskript `tests/run.php` (ohne REDAXO, ohne Abhängigkeiten) prüft Normalisierung, Mindestversionen, Rückstand und Mailformat: `php tests/run.php` (im Addon-Ordner).
 - Im Umleitungsmodus (Detour) des Addons `phpmailer` ändert dieses den Betreff; das feste Betreffformat gilt nur ohne Detour.
 
 ## Lizenz

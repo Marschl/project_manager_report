@@ -28,6 +28,8 @@ Mails are sent with `rex_mailer` (addon `phpmailer`). If sending fails, an entry
 
 The **first run** is a base run (`ÄNDERUNGEN: Basislauf, keine Vergleichsdaten`); from the second run on, the mails contain the changes since the last successful send.
 
+The commands run in the root folder of the REDAXO installation (where `redaxo/bin/console` is located); in a DDEV environment prefix them with `ddev exec`.
+
 Preview (read-only, sends and stores nothing; also shows the delta against the last reported state):
 
 ```bash
