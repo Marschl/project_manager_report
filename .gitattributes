@@ -1,0 +1,10 @@
+# Keep release archives (git archive, GitHub ZIP) limited to the addon files
+/tests export-ignore
+/.github export-ignore
+/.gitignore export-ignore
+/.gitattributes export-ignore
+
+*.php text eol=lf
+*.lang text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
