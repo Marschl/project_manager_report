@@ -4,7 +4,7 @@
 
 Daily status report for the Project Manager: two mails (machine-readable and HTML) with the changes since the last mail was sent. The addon only reads the Project Manager's database; it makes no additional external calls.
 
-*Feedback is welcome, please open an issue on GitHub.*
+*Feedback is welcome, please [open an issue on GitHub](https://github.com/Marschl/project_manager_report/issues).*
 
 > **Note:** The mails, the event names in them and the cronjob name ("Projekt Manager: Status-Mail") are in German. The backend is available in German and English.
 

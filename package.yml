@@ -1,6 +1,7 @@
 package: project_manager_report
 version: '1.4.3'
 author: 'Marcel Scherkamp'
+supportpage: https://github.com/Marschl/project_manager_report
 
 page:
     title: 'translate:project_manager_report_title'

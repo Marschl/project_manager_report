@@ -4,7 +4,7 @@
 
 Täglicher Statusbericht für den Project Manager: zwei Mails (maschinenlesbar und HTML) mit den Änderungen seit dem letzten Versand. Das Addon liest nur die Datenbank des Project Managers, es gibt keine zusätzlichen externen Aufrufe.
 
-*Feedback ist willkommen, bitte als Issue auf GitHub.*
+*Feedback ist willkommen, bitte als [Issue auf GitHub](https://github.com/Marschl/project_manager_report/issues).*
 
 ## Einrichtung
 
