@@ -146,7 +146,7 @@ class rex_project_manager_report_collector
     }
 
     /**
-     * Liste aus Komma, Semikolon, Leerzeichen oder Zeilenumbrüchen getrennt ("a@x.de, b@y.de" -> 2 Einträge).
+     * Liste aus Komma, Semikolon, Leerzeichen oder Zeilenumbrüchen getrennt ("a@x.de, b@y.de" → 2 Einträge).
      *
      * @return list<string>
      */

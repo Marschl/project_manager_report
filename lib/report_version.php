@@ -25,7 +25,7 @@ class rex_project_manager_report_version
     }
 
     /**
-     * PHP: alles ab dem ersten "-" oder "+" abschneiden ("8.4.24-nmm1" -> 8.4.24).
+     * PHP: alles ab dem ersten "-" oder "+" abschneiden ("8.4.24-nmm1" → 8.4.24).
      *
      * @return array{full: string, line: string, patch: int}|null
      */
@@ -69,7 +69,7 @@ class rex_project_manager_report_version
         return ['engine' => $engine, 'version' => $v[0], 'line' => $v[1] . '.' . $v[2]];
     }
 
-    /** "8.3.2" -> "8.3" */
+    /** "8.3.2" → "8.3" */
     public static function line(string $version): string
     {
         $parts = explode('.', $version);

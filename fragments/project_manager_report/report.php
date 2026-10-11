@@ -18,6 +18,13 @@ $badge = static function (string $status) use ($colors): string {
     return '<span style="display:inline-block;padding:2px 8px;border-radius:3px;background:' . $colors[$status] . ';color:#ffffff;font-size:12px;font-weight:bold;">' . rex_escape($status) . '</span>';
 };
 
+// Anzeigenamen der Ereignistypen im Bericht (Data-Mail und Delta behalten die Typnamen)
+$eventLabels = ['KERN' => 'CORE', 'ADDON ANGEWENDET' => 'ADDON', 'BEFUND BEHOBEN' => 'BEHOBEN'];
+
+// Statussymbole der Projekttabelle (Unicode statt Bildern: keine externen Ressourcen, UTF-8 ist gesetzt)
+$icons = ['OK' => '✅', 'BEFUND' => '⚠️', 'VERALTET' => '🕒', 'PAUSIERT' => '⏸️', 'FEHLER' => '⛔'];
+$icon = static fn (string $status): string => '<span role="img" aria-label="' . rex_escape($status) . '" title="' . rex_escape($status) . '" style="font-size:16px;">' . $icons[$status] . '</span>';
+
 $font = 'font-family:Arial,Helvetica,sans-serif;';
 // Schrift und Farbe erbt alles vom Container; kurze Inline-Styles halten die Mail klein (Gmail kürzt HTML ab etwa 102 KB)
 $th = 'style="font-size:12px;text-align:left;padding:6px 8px;background:#e4e4e7;border-bottom:1px solid #d4d4d8;"';
@@ -63,7 +70,7 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 <?php endforeach ?>
 </tr>
 </table>
-<p <?= $muted ?>>Addon-Updates sind kein Befund. <?= $e($s['stale']) ?> Projekt(e) mit veraltetem Abruf.</p>
+<p style="<?= $font ?>font-size:13px;color:#52525b;margin:8px 0;">Addon-Updates sind kein Befund. <?= $e($s['stale']) ?> Projekt(e) mit veraltetem Abruf.</p>
 
 <?php if (null !== $data['delta']): ?>
 <p <?= $h2 ?>>Änderungen<?= 'delta' === $data['delta']['mode'] ? ' seit ' . $e($data['delta']['since']) : '' ?></p>
@@ -76,9 +83,9 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 <tr><th <?= $th ?>>Ereignis</th><th <?= $th ?>>Projekt</th><th <?= $th ?>>Änderung</th></tr>
 <?php foreach ($data['delta']['rows'] as [$type, $domain, $change]): ?>
 <tr>
-<td <?= $td('font-weight:bold;') ?>><?= $e($type) ?></td>
+<td <?= $td('font-weight:bold;') ?>><?= $e($eventLabels[$type] ?? $type) ?></td>
 <td <?= $td() ?>><?= $e($domain) ?></td>
-<td <?= $td($mono) ?>><?= $e($change) ?></td>
+<td <?= $td($mono) ?>><?= $e(str_replace(' -> ', ' → ', $change)) ?></td>
 </tr>
 <?php endforeach ?>
 </table>
@@ -126,16 +133,16 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 </table>
 <?php endif ?>
 
-<p <?= $h2 ?>>Addon-Updates (kein Befund)</p>
+<p <?= $h2 ?>>Addon-Updates verfügbar</p>
 <?php if ([] === $data['updates']): ?>
 <p <?= $muted ?>>Keine Updates gemeldet.</p>
 <?php else: ?>
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e4e4e7;">
-<tr><th <?= $th ?>>Projekt</th><th <?= $th ?>>Addons (installiert -> verfügbar)</th></tr>
+<tr><th <?= $th ?>>Projekt</th><th <?= $th ?>>Addons (installiert → verfügbar)</th></tr>
 <?php foreach ($data['updates'] as $project): ?>
 <tr>
 <td <?= $td() ?>><?= $e($project['domain']) ?></td>
-<td <?= $td($mono) ?>><?= $e(implode(', ', array_map(static fn (array $u) => $u['name'] . ' ' . $u['current'] . ' -> ' . $u['latest'], $project['updates']))) ?></td>
+<td <?= $td($mono) ?>><?= $e(implode(', ', array_map(static fn (array $u) => $u['name'] . ' ' . $u['current'] . ' → ' . $u['latest'], $project['updates']))) ?></td>
 </tr>
 <?php endforeach ?>
 </table>
@@ -161,7 +168,7 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 <p <?= $h2 ?>>Alle Projekte</p>
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e4e4e7;">
 <tr>
-<?php foreach (['Domain', 'REDAXO', 'PHP', 'Datenbank', 'Updates', 'Syslog', 'Letzter Abruf', 'Status'] as $label): ?>
+<?php foreach (['Domain', 'REDAXO', 'PHP', 'Datenbank', 'Upd.', 'Log', 'Abruf', 'Status'] as $label): ?>
 <th <?= $th ?>><?= $e($label) ?></th>
 <?php endforeach ?>
 </tr>
@@ -178,16 +185,21 @@ $title = 'Projekt Manager – Statusbericht ' . $data['now'];
 <td <?= $td() ?>><?= $failed ? '-' : $e(count($project['updates'])) ?></td>
 <td <?= $td() ?>><?= $failed ? '-' : $e(array_sum(array_column($project['syslog'], 'count'))) ?></td>
 <td <?= $td() ?>><?= $e($project['last_success'] ? rex_project_manager_report_builder::minute($project['last_success']) : '-') ?></td>
-<td <?= $td() ?>><?= $badge($data['status'][$project['domain']]) ?></td>
+<td <?= $td('text-align:center;') ?>><?= $icon($data['status'][$project['domain']]) ?></td>
 </tr>
 <?php endforeach ?>
 </table>
+<p style="<?= $font ?>font-size:13px;color:#52525b;margin:8px 0 0 0;">
+<?php foreach ($icons as $status => $symbol): ?>
+<?= $symbol ?> <?= $e($status) ?> &nbsp;
+<?php endforeach ?>
+</p>
 <?php if ($s['below_min'] > 0 || $s['behind'] > 0): ?>
-<p <?= $muted ?>><span style="color:#b91c1c;font-weight:bold;">Rot</span> = unter Mindestversion, <span style="color:#b45309;font-weight:bold;">Orange mit ~</span> = Patch-Rückstand in der PHP-Linie.</p>
+<p style="<?= $font ?>font-size:13px;color:#52525b;margin:4px 0 8px 0;"><span style="color:#b91c1c;font-weight:bold;">Rot</span> = unter Mindestversion, <span style="color:#b45309;font-weight:bold;">Orange mit ~</span> = Patch-Rückstand in der PHP-Linie.</p>
 <?php endif ?>
 
 <p <?= $muted ?>>&nbsp;</p>
-<p style="<?= $font ?>font-size:12px;color:#71717a;margin:0;">Erzeugt vom Addon project_manager_report aus den Daten des Project Managers.</p>
+<p style="<?= $font ?>font-size:12px;color:#71717a;margin:0;">Erzeugt vom Addon <em>Project Manager Report</em> aus den Daten des <em>Project Managers</em>.</p>
 
 </td></tr>
 </table>

@@ -1,5 +1,9 @@
 # Changelog
 
+## Version 1.4.3 // 11.10.2026
+
+* Bericht (HTML): Status in „Alle Projekte“ als Symbol (✅ ⚠️ 🕒 ⏸️ ❌) mit Legende; Ereignisse der Änderungstabelle heißen `CORE`, `ADDON` und `BEHOBEN`, Pfeile als `→`. Die Data-Mail bleibt unverändert
+
 ## Version 1.4.2 // 08.10.2026
 
 * Die Überschrift der Änderungen nennt jetzt Datum und Uhrzeit des letzten erfolgreichen Versands (`ÄNDERUNGEN seit 2026-10-07 06:30`), in der Data-Mail und im Bericht. Bisher stand nur das Datum, was bei mehreren Versendungen am Tag mehrdeutig war
