@@ -49,6 +49,12 @@ class rex_project_manager_report_collector
 
     private const SYSLOG_WINDOW_SECONDS = 86400;
     private const MESSAGE_MAX_LENGTH = 200;
+    /** Spaltenbreiten von syslog_seen (type, file, line) und Grenzen für Addon-Angaben */
+    private const TYPE_MAX_LENGTH = 100;
+    private const FILE_MAX_LENGTH = 500;
+    private const LINE_MAX_LENGTH = 20;
+    private const ADDON_NAME_MAX_LENGTH = 100;
+    private const ADDON_VERSION_MAX_LENGTH = 50;
     private const PRERELEASE = '/alpha|beta|rc|dev/i';
 
     /**
@@ -146,13 +152,31 @@ class rex_project_manager_report_collector
     }
 
     /**
+     * Fremde Angaben für zeilenorientierte Ausgaben und feste Spaltenbreiten aufbereiten:
+     * Whitespace und Steuerzeichen (auch Zeilenumbrüche) werden zu einem Leerzeichen, Länge begrenzt.
+     */
+    public static function clean(string $value, int $max): string
+    {
+        $value = trim((string) preg_replace('/[\s\x00-\x1F\x7F]+/u', ' ', mb_scrub($value)));
+
+        return mb_strlen($value) > $max ? mb_substr($value, 0, $max - 1) . '…' : $value;
+    }
+
+    /**
      * Liste aus Komma, Semikolon, Leerzeichen oder Zeilenumbrüchen getrennt ("a@x.de, b@y.de" → 2 Einträge).
      *
      * @return list<string>
      */
     public static function parseList(string $value): array
     {
-        return array_values(array_filter(preg_split('/[\s,;]+/', $value) ?: [], static fn (string $item) => '' !== $item));
+        $unique = [];
+        foreach (preg_split('/[\s,;]+/', $value) ?: [] as $item) {
+            if ('' !== $item) {
+                $unique[mb_strtolower($item)] ??= $item; // E-Mail-Adressen: Schreibweise egal, erstes Vorkommen bleibt
+            }
+        }
+
+        return array_values($unique);
     }
 
     /**
@@ -391,7 +415,7 @@ class rex_project_manager_report_collector
         $installed = [];
         foreach (is_array($addons) ? $addons : [] as $key => $addon) {
             if (is_array($addon) && !empty($addon['install']) && '' !== (string) ($addon['version_current'] ?? '')) {
-                $installed[(string) ($addon['name'] ?? $key)] = (string) $addon['version_current'];
+                $installed[self::clean((string) ($addon['name'] ?? $key), self::ADDON_NAME_MAX_LENGTH)] = self::clean((string) $addon['version_current'], self::ADDON_VERSION_MAX_LENGTH);
             }
         }
         ksort($installed, SORT_STRING | SORT_FLAG_CASE);
@@ -412,12 +436,12 @@ class rex_project_manager_report_collector
             if (!is_array($addon) || empty($addon['install']) || empty($addon['status'])) {
                 continue;
             }
-            $current = (string) ($addon['version_current'] ?? '');
-            $latest = (string) ($addon['version_latest'] ?? '');
+            $current = self::clean((string) ($addon['version_current'] ?? ''), self::ADDON_VERSION_MAX_LENGTH);
+            $latest = self::clean((string) ($addon['version_latest'] ?? ''), self::ADDON_VERSION_MAX_LENGTH);
             if ('' === $current || '' === $latest || '0' === $latest || version_compare($latest, $current, '<=')) {
                 continue;
             }
-            $updates[(string) ($addon['name'] ?? $key)] = $latest;
+            $updates[self::clean((string) ($addon['name'] ?? $key), self::ADDON_NAME_MAX_LENGTH)] = $latest;
         }
         ksort($updates, SORT_STRING | SORT_FLAG_CASE);
 
@@ -478,7 +502,7 @@ class rex_project_manager_report_collector
             if (!is_array($entry)) {
                 continue;
             }
-            $type = trim((string) ($entry['syslog_type'] ?? ''));
+            $type = self::clean((string) ($entry['syslog_type'] ?? ''), self::TYPE_MAX_LENGTH);
             // Zeitstempel unlesbar: lieber melden als verschweigen
             $time = DateTimeImmutable::createFromFormat('d.m.Y H:i:s', (string) ($entry['timestamp'] ?? ''));
             if ($time && $time < $from) {
@@ -489,12 +513,9 @@ class rex_project_manager_report_collector
                 continue;
             }
 
-            $message = trim((string) preg_replace('/\s+/', ' ', (string) ($entry['syslog_message'] ?? '')));
-            if (mb_strlen($message) > self::MESSAGE_MAX_LENGTH) {
-                $message = mb_substr($message, 0, self::MESSAGE_MAX_LENGTH - 1) . '…';
-            }
-            $file = (string) ($entry['syslog_file'] ?? '');
-            $line = (string) ($entry['syslog_line'] ?? '');
+            $message = self::clean((string) ($entry['syslog_message'] ?? ''), self::MESSAGE_MAX_LENGTH);
+            $file = self::clean((string) ($entry['syslog_file'] ?? ''), self::FILE_MAX_LENGTH);
+            $line = self::clean((string) ($entry['syslog_line'] ?? ''), self::LINE_MAX_LENGTH);
 
             if (self::matchesAny($type . ' ' . $message . ('' === $file ? '' : ' ' . $file . ('' === $line ? '' : ':' . $line)), $ignoreMessages)) {
                 $ignored[$type] = ($ignored[$type] ?? 0) + 1;

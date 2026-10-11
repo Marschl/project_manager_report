@@ -120,17 +120,24 @@ class rex_project_manager_report_service
             return ['failed' => true, 'messages' => ['Keine Empfänger eingetragen (Projekt Manager Report, Einstellungen)'], 'projects' => 0, 'findings' => 0, 'errors' => 0];
         }
 
-        // Zustand und gesehene Syslog-Einträge immer fortschreiben (außer im Testlauf), auch wenn der Versand scheitert
-        if (!$dryRun) {
-            foreach ($prepared['states'] as $domain => $next) {
-                $store::saveState($domain, $next);
-            }
-            $store::upsertSeen($prepared['seen_upserts']);
-            $store::purgeSeen($prepared['now']);
-        }
-
         $messages = [];
         $failed = false;
+
+        // Zustand und gesehene Syslog-Einträge immer fortschreiben (außer im Testlauf), auch wenn der Versand scheitert.
+        // Scheitert das Speichern, werden die Mails trotzdem versendet; der Lauf gilt dann als fehlgeschlagen.
+        if (!$dryRun) {
+            try {
+                foreach ($prepared['states'] as $domain => $next) {
+                    $store::saveState($domain, $next);
+                }
+                $store::upsertSeen($prepared['seen_upserts']);
+                $store::purgeSeen($prepared['now']);
+            } catch (Throwable $e) {
+                $failed = true;
+                self::logFailure($e);
+                $messages[] = 'Zustand nicht gespeichert: ' . $e->getMessage();
+            }
+        }
         foreach ([['data', 'kompakt'], ['report', 'Bericht']] as [$type, $label]) {
             $mail = $mails[$type];
             if ([] === $mail['recipients']) {
@@ -138,18 +145,27 @@ class rex_project_manager_report_service
             }
             try {
                 $sent = $mailer($mail['recipients'], $mail['subject'], $mail['text'], $mail['html'], $dryRun);
-                $note = $dryRun ? ' (Testlauf)' : ($advance ? '' : ' (Stand nicht vorgerückt)');
-                // erst nach erfolgreichem Versand den gemeldeten Stand dieses Mailtyps ersetzen
-                if ($advance) {
-                    $store::replaceReported($type, $mail['snapshot']);
-                    $store::setRules($type, $mail['fingerprint']);
-                }
-                $messages[] = $label . ': gesendet an ' . $sent . $note;
             } catch (Throwable $e) {
                 $failed = true;
                 self::logFailure($e);
                 $messages[] = $label . ': ' . $e->getMessage();
+                continue;
             }
+
+            $note = $dryRun ? ' (Testlauf)' : ($advance ? '' : ' (Stand nicht vorgerückt)');
+            // erst nach erfolgreichem Versand den gemeldeten Stand dieses Mailtyps ersetzen; ein Fehler dabei
+            // ändert nichts daran, dass die Mail gesendet ist
+            if ($advance) {
+                try {
+                    $store::replaceReported($type, $mail['snapshot']);
+                    $store::setRules($type, $mail['fingerprint']);
+                } catch (Throwable $e) {
+                    $failed = true;
+                    self::logFailure($e);
+                    $note = ', Stand nicht gespeichert: ' . $e->getMessage();
+                }
+            }
+            $messages[] = $label . ': gesendet an ' . $sent . $note;
         }
 
         $any = $mails['data'];

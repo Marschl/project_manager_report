@@ -34,6 +34,11 @@ rex_sql_table::get(rex::getTable('project_manager_report_syslog_seen'))
     ->ensureIndex(new rex_sql_index('last_seen', ['last_seen']))
     ->ensure();
 
+// Hash enthält seit 1.4.4 auch den Typ (rex_project_manager_report_delta::hash()): bestehende Zeilen umrechnen,
+// damit bekannte Einträge nicht erneut als "SYSLOG NEU" erscheinen; idempotent
+$seenHash = "SHA1(CONCAT(`type`, '|', `msg`, '|', `file`, '|', `line`))";
+rex_sql::factory()->setQuery('UPDATE ' . rex::getTable('project_manager_report_syslog_seen') . ' SET `hash` = ' . $seenHash . ' WHERE `hash` <> ' . $seenHash);
+
 // Overrides der Mindestversionen je Projekt (leer = globaler Wert); idempotent
 rex_sql_table::get(rex::getTable('project_manager_report_override'))
     ->ensureColumn(new rex_sql_column('domain', 'varchar(255)'))

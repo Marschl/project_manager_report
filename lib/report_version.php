@@ -59,9 +59,11 @@ class rex_project_manager_report_version
     public static function database(mixed $raw): array
     {
         $raw = is_string($raw) ? trim($raw) : '';
-        $engine = false !== stripos($raw, 'mariadb') ? 'MariaDB' : 'MySQL';
+        // das Präfix "5.5.5-" setzt nur MariaDB (Replikation), auch ohne das Wort "MariaDB" im String
+        $prefixed = 1 === preg_match('/^5\.5\.5-(.*)$/', $raw, $m);
+        $engine = $prefixed || false !== stripos($raw, 'mariadb') ? 'MariaDB' : 'MySQL';
 
-        $rest = 1 === preg_match('/^5\.5\.5-(.*)$/', $raw, $m) ? $m[1] : $raw;
+        $rest = $prefixed ? $m[1] : $raw;
         if (1 !== preg_match('/^(\d+)\.(\d+)(?:\.(\d+))?/', $rest, $v)) {
             return ['engine' => $engine, 'version' => null, 'line' => null];
         }

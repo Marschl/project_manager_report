@@ -38,7 +38,7 @@ if ('save' === $func) {
             }
         }
         $input['paused'] = '1' === rex_post('paused', 'string', '') ? '1' : '0';
-        $input['pause_grund'] = trim(rex_post('pause_grund', 'string', ''));
+        $input['pause_grund'] = rex_project_manager_report_collector::clean(rex_post('pause_grund', 'string', ''), 255);
         if ([] === $errors) {
             // Pause (Monitoring): gehört zum Zustand des Projekts, nicht zu den Mindestversionen
             rex_project_manager_report_store::setPause($domain, '1' === $input['paused'], $input['pause_grund']);

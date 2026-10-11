@@ -318,10 +318,15 @@ class rex_project_manager_report_delta
         return $new;
     }
 
-    /** sha1 aus "Meldung|Datei|Zeile" @param array{message: string, file: string, line: string} $group */
+    /**
+     * sha1 aus "Typ|Meldung|Datei|Zeile" (der Typ gehört dazu: Warning und Error mit gleicher Meldung sind verschiedene Einträge).
+     * install.php rechnet bestehende Zeilen der Tabelle syslog_seen mit derselben Formel um.
+     *
+     * @param array{type: string, message: string, file: string, line: string} $group
+     */
     public static function hash(array $group): string
     {
-        return sha1($group['message'] . '|' . $group['file'] . '|' . $group['line']);
+        return sha1($group['type'] . '|' . $group['message'] . '|' . $group['file'] . '|' . $group['line']);
     }
 
     /**

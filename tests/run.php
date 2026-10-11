@@ -339,7 +339,7 @@ $check('Delta 11: bekannter Eintrag behaelt first_seen, aktualisiert count und l
 $check('Delta 11: ohne Baseline keine neuen Syslog-Eintraege', [] === $D::newSyslog($m2['seen'], null, [], []));
 $d = $D::compute([$withSys([$g('neu')])], $base([$mk('a.de', '8.4.26', '5.21.4', $ok)]), ['settings' => $cfg, 'syslog_new' => $new]);
 $check('Delta 11: SYSLOG NEU im Ereignis', ['a.de Warning "neu" (a.php:72) x1'] === $ev($d, 'SYSLOG NEU') && 'SYSLOG NEU: a.de Warning "neu" (a.php:72) x1' === $D::lines($d)[1]);
-$check('Delta 11: Hash aus Meldung|Datei|Zeile', sha1('neu|a.php|72') === $D::hash($g('neu')));
+$check('Delta 11: Hash aus Typ|Meldung|Datei|Zeile', sha1('Warning|neu|a.php|72') === $D::hash($g('neu')));
 // 12 Projekte neu und entfernt, neue Projekte ohne weitere Ereignisse
 $d = $D::compute([$mk('a.de', '8.4.26', '5.21.4', $ok), $mk('neu.de', '7.4.33', '5.14.3', $ok)], $base([$mk('a.de', '8.4.26', '5.21.4', $ok), $mk('alt.de', '8.4.26', '5.21.4', $ok)]), $ctx);
 $check('Delta 12: PROJEKTE + neu | - alt, neues Projekt ohne Befundzeile', 'PROJEKTE: + neu.de | - alt.de' === $D::lines($d)[1] && [] === $ev($d, 'BEFUND NEU'));
@@ -387,6 +387,53 @@ $check('Bericht-Text: Aenderungen, Fehlerdauer, Pause', str_contains($rep['text'
 $repBase = $B::buildReport([$pu], $day2, false, $D::compute([$pu], [], $ctx));
 $check('Bericht-Text: Basislauf', str_contains($repBase['text'], "ÄNDERUNGEN\nBasislauf, keine Vergleichsdaten."));
 $check('Delta-Zeilen fuer Report: Ereignis, Projekt, Aenderung', [['STATUS', 'err.de', 'NEU AUSGEFALLEN']] === array_slice($D::rows($delta), 0, 1));
+
+// ---------------------------------------------------------------- Fremde Angaben: Zeilen-Injection, Spaltenbreiten, Hash, Engine, Empfaenger
+$check('clean: Whitespace, Zeilenumbrueche und Steuerzeichen werden zu einem Leerzeichen', 'a b c' === $C::clean("  a\n\r\tb\x00\x1Fc  ", 50));
+$check('clean: Laenge begrenzt (mit Auslassungszeichen)', 10 === mb_strlen($C::clean(str_repeat('ä', 30), 10)) && str_ends_with($C::clean(str_repeat('ä', 30), 10), '…') && 'kurz' === $C::clean('kurz', 10));
+$check('clean: ungueltiges UTF-8 bricht nicht ab', 'ab' === $C::clean("a\xFFb", 10) || '' !== $C::clean("a\xFFb", 10));
+
+$evil = "x\nFEHLER: a.de seit 0 Tagen";
+$rawEvil = (string) json_encode([
+    'rex_version' => '5.21.4', 'php_version' => '8.4.26', 'mysql_version' => '10.11.14-MariaDB',
+    'rex_addons' => ['evil' => ['name' => $evil, 'install' => 1, 'status' => 1, 'version_current' => "1.0\n", 'version_latest' => "2.0\nPAUSIERT: b.de (x)"]],
+    'syslog' => [['timestamp' => '08.10.2026 00:00:03', 'syslog_type' => "Warning\nFEHLER: c.de", 'syslog_message' => 'm', 'syslog_file' => "f.php\nFEHLER: d.de", 'syslog_line' => str_repeat('9', 50)]],
+]);
+$pe2 = $C::analyse(['domain' => 'a.de', 'cms' => '5', 'status' => '1', 'createdate' => '2026-10-08 00:00:12', 'raw' => $rawEvil], $now, 30, $ignore, [], $global);
+$machine = $B::buildMachine([$pe2], $now)['body'];
+$hasForged = false;
+foreach (explode("\n", $machine) as $l) {
+    if (str_starts_with($l, 'FEHLER:') || str_starts_with($l, 'PAUSIERT:')) {
+        $hasForged = true;
+    }
+}
+$check('Data-Mail: Zeilenumbrueche in Addon- und Syslog-Angaben erzeugen keine Zeilen mit festem Praefix', !$hasForged);
+$ds = $D::lines($D::compute([$pe2], $base([$mk('a.de', '8.4.26', '5.21.4', $ok, ['addons' => [$evil => ['0.9']]])]), $ctx));
+$hasForged = false;
+foreach ($ds as $l) {
+    if (str_starts_with($l, 'FEHLER:') || str_starts_with($l, 'PAUSIERT:')) {
+        $hasForged = true;
+    }
+}
+$check('Delta-Zeilen: keine eingeschleusten Praefixzeilen', !$hasForged);
+$grp = $pe2['syslog'][0] ?? ['type' => '', 'file' => '', 'line' => ''];
+$check('Syslog-Gruppe: Typ/Datei/Zeile passen in die Spalten (100/500/20)', mb_strlen($grp['type']) <= 100 && mb_strlen($grp['file']) <= 500 && mb_strlen($grp['line']) <= 20 && !str_contains($grp['type'] . $grp['file'], "\n"));
+$long = $C::analyse(['domain' => 'l.de', 'cms' => '5', 'status' => '1', 'createdate' => '2026-10-08 00:00:12', 'raw' => $raw('8.4.26', '5.21.4', $maria, [['timestamp' => '08.10.2026 00:00:03', 'syslog_type' => str_repeat('T', 300), 'syslog_message' => 'm', 'syslog_file' => str_repeat('f', 900), 'syslog_line' => str_repeat('1', 99)]])], $now, 30, $ignore, [], $global);
+$check('Syslog: sehr lange Angaben werden gekuerzt', 100 === mb_strlen($long['syslog'][0]['type']) && 500 === mb_strlen($long['syslog'][0]['file']) && 20 === mb_strlen($long['syslog'][0]['line']));
+
+$gw = $g('gleich');
+$ge = ['type' => 'Error'] + $gw;
+$check('Hash: Typ gehoert dazu', $D::hash($gw) !== $D::hash($ge));
+$mm = $D::mergeSeen([], [$withSys([$gw, $ge])], $then);
+$check('mergeSeen: gleiche Meldung mit Warning und Error bleibt als zwei Eintraege', 2 === count($mm['seen']));
+
+$db1 = $V::database('5.5.5-10.5.23');
+$check('database: Praefix 5.5.5- ohne Wort MariaDB ist MariaDB', 'MariaDB' === $db1['engine'] && '10.5.23' === $db1['version'] && '10.5' === $db1['line']);
+$db2 = $V::database('5.5.5-MariaDB');
+$check('database: 5.5.5-MariaDB bleibt unbekannt', 'MariaDB' === $db2['engine'] && null === $db2['version']);
+$check('database: MySQL unveraendert', 'MySQL' === $V::database('8.0.36')['engine'] && 'MariaDB' === $V::database('10.11.14-MariaDB-1:10.11.14')['engine']);
+
+$check('parseList: doppelte Adressen (Schreibweise egal) nur einmal, erstes Vorkommen bleibt', ['a@x.de', 'b@x.de'] === $C::parseList('a@x.de, A@X.de; b@x.de'));
 
 echo $failed, ' von ', $total, " Pruefungen fehlgeschlagen\n";
 exit($failed > 0 ? 1 : 0);
