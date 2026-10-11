@@ -1,0 +1,66 @@
+project_manager_report_title = Project Manager Report
+project_manager_report_settings = Settings
+project_manager_report_projects = Projects
+
+perm_general_project_manager_report[] = project_manager_report[] - Settings and project overrides of the Project Manager Report
+
+project_manager_report_settings_title = Settings
+project_manager_report_group_versions = Minimum versions and lag
+project_manager_report_settings_intro = Apply to all projects. Empty field = rule off. Versions as x.y or x.y.z; PHP and database are compared on major.minor only, REDAXO in full.
+project_manager_report_min_rex = Minimum version REDAXO
+project_manager_report_min_rex_note = Core version, e.g. 5.21.2. Does not apply to REDAXO 4 projects.
+project_manager_report_min_php = Minimum version PHP
+project_manager_report_min_php_note = PHP line, e.g. 8.3
+project_manager_report_min_mariadb = Minimum version MariaDB
+project_manager_report_min_mariadb_note = Only applies if the project's engine is MariaDB, e.g. 10.11
+project_manager_report_min_mysql = Minimum version MySQL
+project_manager_report_min_mysql_note = Only applies if the project's engine is MySQL, e.g. 8.4
+project_manager_report_max_patch_lag = Allowed PHP patch lag
+project_manager_report_max_patch_lag_note = Maximum distance between the patch version and the highest patch version of the same PHP line among all projects (integer, e.g. 3).
+project_manager_report_ignore_prerelease = Ignore pre-releases for addon updates
+project_manager_report_ignore_prerelease_note = alpha, beta, rc and dev as latest version do not count as an update unless the project itself runs a pre-release.
+project_manager_report_save = Save
+project_manager_report_saved = Settings saved.
+project_manager_report_invalid_version = "{0}": invalid version (allowed: x.y or x.y.z, or empty).
+project_manager_report_group_mail = Delivery
+project_manager_report_group_mail_intro = There are two mails: a compact, machine-readable one and a detailed report for humans. Each has its own recipients; an empty field disables that mail. The cronjob "Projekt Manager: Status-Mail" triggers the delivery.
+project_manager_report_recipients = Recipients machine-readable (compact)
+project_manager_report_recipients_note = Terse, structured plain-text mail for automated processing. Email addresses, separated by comma or line break.
+project_manager_report_recipients_report = Recipients report (HTML)
+project_manager_report_recipients_report_note = Detailed, readable report (HTML with text alternative). Email addresses, separated by comma or line break.
+project_manager_report_dry_run_address = Test address
+project_manager_report_dry_run_address_note = One address for the test run. During a test run both mails go only here.
+project_manager_report_dry_run = Test run (dry run)
+project_manager_report_dry_run_note = Send both mails to the test address only and store nothing (no reported state, no state, no seen syslog entries). Also applies to the cronjob; switch off for normal operation.
+project_manager_report_dry_run_needs_address = Test run: please enter a test address.
+project_manager_report_group_evaluation = Evaluation
+project_manager_report_group_evaluation_intro = What counts as a finding. Filtered syslog entries are not findings and appear in the report as "Syslog without findings".
+project_manager_report_stale_hours = Outdated after (hours)
+project_manager_report_stale_hours_note = If the last successful fetch is older, the project is OUTDATED (finding). Integer from 1, empty = 30.
+project_manager_report_syslog_ignore = Ignore syslog types
+project_manager_report_syslog_ignore_note = Comma-separated, case-insensitive, e.g. Info,logevent,Deprecated,Notice. Ignoring Warning also hides real PHP errors.
+project_manager_report_syslog_ignore_messages = Ignore syslog messages
+project_manager_report_syslog_ignore_messages_note = Partial texts, one per line, case-insensitive. Matched against "type message file:line", e.g. Undefined variable $params
+project_manager_report_invalid_address = "{0}": invalid email address: {1}
+project_manager_report_invalid_hours = "{0}": invalid value (allowed: integer from 1 or empty).
+project_manager_report_invalid_lag = "{0}": invalid value (allowed: integer or empty).
+project_manager_report_no_permission = No permission.
+
+project_manager_report_projects_title = Projects
+project_manager_report_projects_intro = Own minimum versions per project. Empty field = global value from the settings. With 0.0 the respective rule is switched off for the project.
+project_manager_report_domain = Domain
+project_manager_report_cms = CMS
+project_manager_report_global = global
+project_manager_report_edit = Edit
+project_manager_report_override_for = Override for {0}
+project_manager_report_override_saved = Override saved.
+project_manager_report_override_removed = Override removed, the global values apply.
+project_manager_report_unknown_domain = The project "{0}" does not exist in the Project Manager.
+project_manager_report_need_reinstall = The table for overrides is missing. Reinstall the addon under "Addons".
+project_manager_report_cancel = Cancel
+project_manager_report_paused = Monitoring paused
+project_manager_report_paused_note = Paused projects do not count as errors or findings and produce no changes; they appear in a separate section (status=paused in the inventory).
+project_manager_report_pause_reason = Reason for pause
+project_manager_report_pause_saved = Pause saved.
+project_manager_report_reset = Reset
+project_manager_report_no_projects = No projects are set up in the Project Manager.

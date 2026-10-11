@@ -3,6 +3,7 @@
 ## Version 1.4.3 // 11.10.2026
 
 * Bericht (HTML): Status in „Alle Projekte“ als Symbol (✅ ⚠️ 🕒 ⏸️ ❌) mit Legende; Ereignisse der Änderungstabelle heißen `CORE`, `ADDON` und `BEHOBEN`, Pfeile als `→`. Die Data-Mail bleibt unverändert
+* Englische Backend-Sprache (`en_gb`)
 
 ## Version 1.4.2 // 08.10.2026
 
