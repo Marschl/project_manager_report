@@ -1,5 +1,14 @@
 # Changelog
 
+## Version 1.4.4 // 11.10.2026
+
+* **Sicherheit:** Angaben aus den überwachten Installationen (Addon-Namen, Versionen, Syslog-Typ, -Datei und -Zeile) werden bereinigt und gekürzt. Zeilenumbrüche darin konnten Zeilen mit festem Präfix (`FEHLER:`, `PAUSIERT:` …) in die Data-Mail einschleusen
+* **Robustheit:** Überlange Syslog-Angaben konnten beim Speichern eine Exception auslösen und den Versand verhindern. Werte werden auf die Spaltenbreite gekürzt, und ein Fehler beim Fortschreiben des Zustands verhindert den Versand nicht mehr
+* Ein Fehler beim Speichern des gemeldeten Stands nach erfolgreichem Versand gilt nicht mehr als „nicht gesendet“ (sonst käme dieselbe Mail doppelt)
+* **Syslog:** Der Hash gesehener Einträge enthält jetzt den Typ; Warning und Error mit gleicher Meldung, Datei und Zeile sind getrennte Einträge. Bestehende Einträge werden bei der Installation umgerechnet, **das Addon nach dem Update neu installieren**
+* Datenbank: Eine Version mit dem Präfix `5.5.5-` gilt auch ohne das Wort „MariaDB“ als MariaDB
+* Doppelte Empfängeradressen (Schreibweise egal) werden zusammengefasst
+
 ## Version 1.4.3 // 11.10.2026
 
 * Bericht (HTML): Status in „Alle Projekte“ als Symbol (✅ ⚠️ 🕒 ⏸️ ❌) mit Legende; Ereignisse der Änderungstabelle heißen `CORE`, `ADDON` und `BEHOBEN`, Pfeile als `→`. Die Data-Mail bleibt unverändert
